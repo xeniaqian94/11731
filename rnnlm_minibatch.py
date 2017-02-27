@@ -1,5 +1,7 @@
 from collections import Counter, defaultdict
 from itertools import count
+from collections import defaultdict
+from itertools import count, izip
 import random
 
 import dynet as dy
@@ -64,8 +66,8 @@ words.append("<unk>")
 vw = Vocab.from_corpus([words])
 S = vw.w2i["<s>"]
 
-nwords = vw.size()
-print "Length of vocabulary "+str(nwords)
+VOCAB_SIZE = vw.size()
+print "Length of vocabulary "+str(VOCAB_SIZE)
 
 # DyNet Starts
 
@@ -73,14 +75,14 @@ model = dy.Model()
 trainer = dy.SimpleSGDTrainer(model)
 
 # Lookup parameters for word embeddings
-WORDS_LOOKUP = model.add_lookup_parameters((nwords, EMB_SIZE))
+WORDS_LOOKUP = model.add_lookup_parameters((VOCAB_SIZE, EMB_SIZE))
 
 # Word-level LSTM (layers=1, input=64, output=128, model)
 RNN = dy.LSTMBuilder(1, EMB_SIZE, HID_SIZE, model)
 
 # Softmax weights/biases on top of LSTM outputs
-W_sm = model.add_parameters((nwords, HID_SIZE))
-b_sm = model.add_parameters(nwords)
+W_sm = model.add_parameters((VOCAB_SIZE, HID_SIZE))
+b_sm = model.add_parameters(VOCAB_SIZE)
 
 
 # Build the language model graph
@@ -108,25 +110,42 @@ def calc_lm_loss(sents):
     # start the rnn by inputting "<s>"
     init_ids = [S] * len(sents)
     s = f_init.add_input(dy.lookup_batch(WORDS_LOOKUP, init_ids))
+    losses = []
 
     # feed word vectors into the RNN and predict the next word
-    losses = []
-    for wid, mask in zip(wids, masks):
-        # calculate the softmax and loss
-        score = W_exp * s.output() + b_exp
-        loss = dy.pickneglogsoftmax_batch(score, wid)
-        # mask the loss if at least one sentence is shorter
-        if mask[-1] != 1:
-            mask_expr = dy.inputVector(mask)
-            # print len(mask)
-            mask_expr = dy.reshape(mask_expr, (1,), len(mask))
-            loss = loss * mask_expr
-        losses.append(loss)
-        # update the state of the RNN
-        wemb = dy.lookup_batch(WORDS_LOOKUP, wid)
-        s = s.add_input(wemb)
+
+
+####transduce() rewrite starts!!!
+
+    inputs=[dy.lookup_batch(WORDS_LOOKUP, init_ids)]+[dy.lookup_batch(WORDS_LOOKUP,wid) for wid in wids[:-1]]
+
+    outputs=s.transduce(inputs)
+
+    scores=[(W_exp * output+ b_exp) for output in outputs]
+    expected_outputs=wids
+    losses=[dy.pickneglogsoftmax_batch(score,wid) for score,wid in zip(scores,expected_outputs)]
+    losses=[loss*dy.reshape(dy.inputVector(mask),(1,), len(mask)) if mask[-1]!=1 else loss for loss,mask in zip(losses,masks) ]
 
     return dy.sum_batches(dy.esum(losses)), tot_words
+
+
+    # losses = []
+    # for wid, mask in zip(wids, masks):
+    #     # calculate the softmax and loss
+    #     score = W_exp * s.output() + b_exp
+    #     loss = dy.pickneglogsoftmax_batch(score, wid)
+    #     # mask the loss if at least one sentence is shorter
+    #     if mask[-1] != 1:
+    #         mask_expr = dy.inputVector(mask)
+    #         # print len(mask)
+    #         mask_expr = dy.reshape(mask_expr, (1,), len(mask))
+    #         loss = loss * mask_expr
+    #     losses.append(loss)
+    #     # update the state of the RNN
+    #     wemb = dy.lookup_batch(WORDS_LOOKUP, wid)
+    #     s = s.add_input(wemb)
+    #
+    # return dy.sum_batches(dy.esum(losses)), tot_words
 
 
 num_tagged = cum_loss = 0
@@ -161,5 +180,5 @@ for ITER in xrange(NUM_EPOCHES):
         loss_exp.backward()
         trainer.update()
         # print "trainer updated once "+str(i)+" "+str(sid)
-    print "epoch %r finished" % ITER
+    print "Epoch %r finished" % ITER
     trainer.update_epoch(1.0)
