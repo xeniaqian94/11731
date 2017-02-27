@@ -159,6 +159,6 @@ for ITER in xrange(NUM_EPOCHES):
         num_tagged += mb_words
         loss_exp.backward()
         trainer.update()
-        print "trainer updated once "+str(i)+" "+str(sid)
+        # print "trainer updated once "+str(i)+" "+str(sid)
     print "epoch %r finished" % ITER
     trainer.update_epoch(1.0)
