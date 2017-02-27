@@ -5,6 +5,7 @@ import random
 import dynet as dy
 import numpy as np
 import sys
+import time
 
 # format of files: each line is "word1/tag2 word2/tag2 ..."
 train_file = sys.argv[1]
@@ -13,7 +14,7 @@ test_file = sys.argv[2]
 MB_SIZE = 32
 
 N = 3
-EVAL_EVERY = 128
+EVAL_EVERY = 10000
 EMB_SIZE = 128
 HID_SIZE = 128
 NUM_EPOCHES=20
@@ -136,11 +137,13 @@ print "length of test "+str(len(test))+" num of batches "+str(len(test) / MB_SIZ
 train_order = [x * MB_SIZE for x in range(len(train) / MB_SIZE + 1)]
 test_order = [x * MB_SIZE for x in range(len(test) / MB_SIZE + 1)]
 # Perform training
+start_time=time.time()
+
 for ITER in xrange(NUM_EPOCHES):
     random.shuffle(train_order)
     for i, sid in enumerate(train_order, 1):
         if i % (EVAL_EVERY / MB_SIZE) == 0:
-            trainer.status()
+            # trainer.status()
             print cum_loss / num_tagged
             num_tagged = cum_loss = 0
         if i % (EVAL_EVERY / MB_SIZE) == 0 or i == len(train_order) - 1:
@@ -149,7 +152,7 @@ for ITER in xrange(NUM_EPOCHES):
                 loss_exp, mb_words = calc_lm_loss(test[sid:sid + MB_SIZE])
                 dev_loss += loss_exp.scalar_value()
                 dev_words += mb_words
-            print dev_loss / dev_words
+            print "Epoch=%d Updates=%d PPL=%f Time=%d" %(ITER,i,np.exp(dev_loss / dev_words),time.time()-start_time)
         # train on the minibatch
         loss_exp, mb_words = calc_lm_loss(train[sid:sid + MB_SIZE])
         cum_loss += loss_exp.scalar_value()
