@@ -11,7 +11,7 @@ import time
 train_file = sys.argv[1]
 test_file = sys.argv[2]
 
-MB_SIZE = 32
+MB_SIZE = 16
 
 N = 3
 EVAL_EVERY = 10000
@@ -65,6 +65,7 @@ vw = Vocab.from_corpus([words])
 S = vw.w2i["<s>"]
 
 nwords = vw.size()
+print "Length of vocabulary "+str(nwords)
 
 # DyNet Starts
 
@@ -142,10 +143,10 @@ start_time=time.time()
 for ITER in xrange(NUM_EPOCHES):
     random.shuffle(train_order)
     for i, sid in enumerate(train_order, 1):
-        if i % (EVAL_EVERY / MB_SIZE) == 0:
-            # trainer.status()
-            print cum_loss / num_tagged
-            num_tagged = cum_loss = 0
+        # if i % (EVAL_EVERY / MB_SIZE) == 0:
+        #     # trainer.status()
+        #     # print cum_loss / num_tagged
+        #     num_tagged = cum_loss = 0
         if i % (EVAL_EVERY / MB_SIZE) == 0 or i == len(train_order) - 1:
             dev_loss = dev_words = 0
             for sid in test_order:
