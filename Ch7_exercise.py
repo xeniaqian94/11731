@@ -51,7 +51,7 @@ def test(args):
 
     test_pair = zip(test_src_id, test_tgt_id)
 
-    hypotheses, bleu_score = model.decode(test_pair, True)
+    hypotheses, bleu_score = model.decode(test_pair)
 
     print "BLEU score on test set %f" % bleu_score
 
