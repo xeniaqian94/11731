@@ -107,7 +107,7 @@ def train(args):
 
     epochs = 20
     updates = 0
-    eval_every = 500
+    eval_every = args.eval_every
     prev_bleu = []
     bad_counter = 0
     total_loss = total_examples = total_length = 0
@@ -389,13 +389,18 @@ class EncoderDecoder:
         references = []
         translations = []
         for src_sent, tgt_sent in data_pairs:
-            hypothesis = self.translate([src_sent])[0]  # translate is per sent, wrapped as a list
+            hypotheses = self.translate([src_sent])  # translate is per sent, wrapped as a list
+            hypothesis=hypotheses[0]
             if count < 5:
-                print hypothesis.y, hypothesis.score, self.translate([src_sent])[1].y,self.translate([src_sent])[1].score
+                if len(hypotheses)>1:
+                    print hypothesis.y, hypothesis.score,hypotheses[1].y,hypotheses[1].score
+                else:
+                    print hypothesis.y, hypothesis.score
                 count = count + 1
                 print "Source: "+" ".join([self.tgt_id_to_token[i] for i in src_sent])
                 print "Reference: "+" ".join([self.tgt_id_to_token[i] for i in tgt_sent])
                 print "Translation: "+" ".join(hypothesis.y)
+                print
 
             else:
                 break
@@ -459,6 +464,7 @@ def main():
     parser.add_argument('--load_from')
     parser.add_argument('--concat_readout', action='store_true', default=False)
     parser.add_argument('--tolerance', type=int, default=20)
+    parser.add_argument('--eval_every',type=int,default=500)
     parser.add_argument('--model_name', type=str, default="model_")
     parser.add_argument('--output', type=str, default='./output/')
     parser.add_argument('--dropout', type=float, default=0.5)
