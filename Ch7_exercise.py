@@ -79,6 +79,7 @@ def train(args):
 
     print "Length of train(src) " + str(len(training_src_id)) + " num of batches " + str(
         len(training_src_id) / args.batch_size + 1)
+    print training_src[0]
 
     training_tgt = read_corpus(args.train_tgt)
     tgt_vocab = Vocab.from_corpus(training_tgt, args.tgt_vocab_size)
@@ -88,6 +89,7 @@ def train(args):
 
     print "Length of train(tgt) " + str(len(training_tgt_id)) + " num of batches " + str(
         len(training_tgt_id) / args.batch_size + 1)
+    print training_tgt[0]
 
     dev_src = read_corpus(args.dev_src)  # get vocabulary
     dev_src_id = get_data_id(src_vocab, dev_src)
@@ -95,8 +97,12 @@ def train(args):
     print "Length of Dev(src) " + str(len(dev_src_id)) + " num of batches " + str(
         len(dev_src_id) / args.batch_size + 1)
 
+    print dev_src[0]
+
     dev_tgt = read_corpus(args.dev_tgt)  # get vocabulary
     dev_tgt_id = get_data_id(tgt_vocab, dev_tgt)
+
+    print dev_tgt[0]
 
     # print "Data duly loaded!"
 
@@ -388,6 +394,8 @@ class EncoderDecoder:
 
         references = []
         translations = []
+        print data_pairs[0]
+
         for src_sent, tgt_sent in data_pairs:
             hypotheses = self.translate([src_sent])  # translate is per sent, wrapped as a list
             hypothesis=hypotheses[0]
@@ -397,7 +405,7 @@ class EncoderDecoder:
                 else:
                     print hypothesis.y, hypothesis.score
                 count = count + 1
-                print "Source: "+" ".join([self.tgt_id_to_token[i] for i in src_sent])
+                print "Source: "+" ".join([self.src_id_to_token[i] for i in src_sent])
                 print "Reference: "+" ".join([self.tgt_id_to_token[i] for i in tgt_sent])
                 print "Translation: "+" ".join(hypothesis.y)
                 print
@@ -464,7 +472,7 @@ def main():
     parser.add_argument('--load_from')
     parser.add_argument('--concat_readout', action='store_true', default=False)
     parser.add_argument('--tolerance', type=int, default=20)
-    parser.add_argument('--eval_every',type=int,default=500)
+    parser.add_argument('--eval_every',type=int,default=2000)
     parser.add_argument('--model_name', type=str, default="model_")
     parser.add_argument('--output', type=str, default='./output/')
     parser.add_argument('--dropout', type=float, default=0.5)
