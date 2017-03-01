@@ -25,7 +25,7 @@ def get_batches(sents_pair, batch_size):
     random.shuffle(batches)
     for batch in batches:
         # yield [list(batch[0]), list(batch[1])]
-        if len(batch)==2 and len(batch[0])>0 and len(batch[1])>0:
+        if len(batch) == 2 and len(batch[0]) > 0 and len(batch[1]) > 0:
             yield batch
 
 
@@ -139,7 +139,7 @@ def train(args):
             batch_length = sum([len(s) for s in tgt_batch])
             total_length += batch_length
 
-            ppl = np.exp(loss_value *batch_size/ batch_length)
+            ppl = np.exp(loss_value * batch_size / batch_length)
             total_ppl = np.exp(total_loss / total_length)
             print "Epoch=%d, Updates=%d, Pairs_Porcessed=%d, Loss=%f, Avg. Loss=%f, PPL(for this batch)=%f, PPL(overall)=%f, Time taken=%d s" % \
                   (epoch + 1, updates + 1, total_examples, loss_value, total_loss / total_examples, ppl, total_ppl,
@@ -374,7 +374,7 @@ class EncoderDecoder:
             final_hypotheses = [hypotheses[0]]  # if there's no good finished hypotheses.
 
         for hyp in final_hypotheses:
-            print hyp.y
+            # print hyp.y
             hyp.y = [self.tgt_id_to_token[i] for i in hyp.y]
 
         return sorted(final_hypotheses, key=lambda x: x.score, reverse=True)
@@ -385,6 +385,7 @@ class EncoderDecoder:
 
         for src_sent, tgt_sent in data_pairs:
             hypothesis = self.translate([src_sent])[0]  # translate is per sent, wrapped as a list
+            print hypothesis
             hypotheses.append(hypothesis)
 
         if with_reference:
