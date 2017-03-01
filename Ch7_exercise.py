@@ -296,7 +296,7 @@ class EncoderDecoder:
             y_t = dy.affine_transform([b_y, W_y, readout])
 
             loss = dy.pickneglogsoftmax_batch(y_t, tgt_wids[i])
-            if tgt_masks[i][-1] != 1:
+            if 0 in tgt_masks[i][-1]:
                 mask_expr = dy.inputVector(tgt_masks[i])
                 # # print len(mask)
                 mask_expr = dy.reshape(mask_expr, (1,), len(tgt_masks[i]))
@@ -469,7 +469,7 @@ def main():
     parser.add_argument("--beam_size", type=int, default=5)
     parser.add_argument("--batch_size", type=int, default=32)
 
-    parser.add_argument('--src_vocab_size', type=int, default=20000)
+    parser.add_argument('--src_vocab_size', type=int, default=30000)
     parser.add_argument('--tgt_vocab_size', type=int, default=20000)
 
     parser.add_argument('--load_from')
