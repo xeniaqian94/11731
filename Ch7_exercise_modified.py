@@ -11,30 +11,45 @@ import copy
 from nltk.translate.bleu_score import corpus_bleu
 import time
 from utils import *
+from util import *
 
 
 class EncoderDecoder:
-    def __init__(self, config):
+    def __init__(self, args, src_vocab, tgt_vocab, src_id_to_token, tgt_id_to_token):
+
         self.model = model = dy.Model()
-        self.config = config
-        self.src_voc_size = config['src_voc_size']
-        self.tgt_voc_size = config['tgt_voc_size']
-        self.emb_size = config['emb_size']
-        self.hidden_dim = config['hidden_dim']
-        self.att_dim = config["att_dim"]
-        self.src_emb = model.add_lookup_parameters((self.src_voc_size, self.emb_size))
-        self.tgt_emb = model.add_lookup_parameters((self.tgt_voc_size, self.emb_size))
-        self.enc_forward_rnn = GRUBuilder(config['layers'], self.emb_size, self.hidden_dim, model)
-        self.enc_backward_rnn = GRUBuilder(config['layers'], self.emb_size, self.hidden_dim, model)
+        self.trainer = dy.AdamTrainer(self.model)
+        self.args = args
+        # self.src_token_to_id = args['src_token_to_id']
+        self.src_vocab, self.src_token_to_id, self.src_id_to_token = src_vocab, src_vocab.w2i, src_vocab.i2w
+        self.src_vocab_size = self.src_vocab.size()
+
+        # self.tgt_token_to_id = args['tgt_token_to_id']
+        self.tgt_vocab, self.tgt_token_to_id, self.tgt_id_to_token = tgt_vocab, tgt_vocab.w2i, tgt_vocab.i2w
+        self.tgt_vocab_size = self.tgt_vocab.size()
+
+        self.emb_size = args.emb_size
+        self.hidden_dim = args.hid_dim
+        self.att_dim = args.att_dim
+        self.layers = args.layers
+        self.beam_size = args.beam_size
+        self.dropout = args.dropout
+        self.concat_readout = args.concat_readout
+        self.model_name = args.model_name
+
+        self.src_emb = model.add_lookup_parameters((self.src_vocab_size, self.emb_size))
+        self.tgt_emb = model.add_lookup_parameters((self.tgt_vocab_size, self.emb_size))
+        self.enc_forward_rnn = GRUBuilder(1, self.emb_size, self.hidden_dim, model)
+        self.enc_backward_rnn = GRUBuilder(1, self.emb_size, self.hidden_dim, model)
 
         self.W_init = model.add_parameters((self.hidden_dim, self.hidden_dim * 2))
         self.b_init = model.add_parameters((self.hidden_dim, 1))
         self.b_init.zero()
         # self.dec_rnn = GRUBuilder(config['layers'], self.emb_size, self.hidden_dim, model)
-        self.dec_rnn = GRUBuilder(config['layers'], self.emb_size + self.hidden_dim * 2, self.hidden_dim, model)
+        self.dec_rnn = GRUBuilder(1, self.emb_size + self.hidden_dim * 2, self.hidden_dim, model)
         # read out parameters
 
-        if config["concat_readout"]:
+        if args.concat_readout:
             # self.W_readout = model.add_parameters((self.tgt_voc_size, self.hidden_dim * 3))
             # self.b_readout = model.add_parameters((self.tgt_voc_size))
             self.W_readout = model.add_parameters((self.emb_size, self.hidden_dim * 3))
@@ -54,8 +69,8 @@ class EncoderDecoder:
         # self.b_att = model.add_parameters((1,))
         # self.b_att.zero()
 
-        self.softmax_W = model.add_parameters((self.tgt_voc_size, self.emb_size))
-        self.softmax_b = model.add_parameters((self.tgt_voc_size,))
+        self.softmax_W = model.add_parameters((self.tgt_vocab_size, self.emb_size))
+        self.softmax_b = model.add_parameters((self.tgt_vocab_size,))
         self.softmax_b.zero()
         self.SOS = 1
         self.EOS = 2
@@ -64,10 +79,10 @@ class EncoderDecoder:
         # self.tgt_id_to_word = tgt_id_to_word
 
     def save(self):
-        self.model.save("../obj/" + config["model_name"] + "_params.bin")
+        self.model.save("./model/" + self.model_name + "_params.bin")
 
     def load(self):
-        self.model.load("../obj/" + config["model_name"] + "_params.bin")
+        self.model.load("./model/" + self.model_name + "_params.bin")
 
     def transpose_input(self, seq):
         max_len = max([len(sent) for sent in seq])
@@ -98,14 +113,6 @@ class EncoderDecoder:
         V_att = dy.parameter(self.V_att)
         # b_att = dy.parameter(self.b_att)
 
-        if self.config["for_loop_att"]:
-            temp = W_att_hid * hidden
-            enc_list = [V_att * dy.tanh(dy.affine_transform([temp, W_att_cxt, cxt])) for cxt in encoding]
-            # enc_list = [V_att * dy.tanh(W_att_cxt * cxt + temp) + b_att for cxt in encoding]
-            att_weights = dy.softmax(dy.concatenate(enc_list))  # (time_step, batch_size)
-            att_ctx = dy.esum([h_t * att_t for (h_t, att_t) in zip(encoding, att_weights)])
-            return att_ctx, att_weights
-
         enc_seq = dy.concatenate_cols(encoding)  # (dim, time_step, batch_size)
         att_mlp = dy.tanh(dy.colwise_add(W_att_cxt * enc_seq, W_att_hid * hidden))
 
@@ -121,7 +128,7 @@ class EncoderDecoder:
         W_init_state = dy.parameter(self.W_init)
         b_init_state = dy.parameter(self.b_init)
 
-        if self.config["concat_readout"]:
+        if self.concat_readout:
             W_readout = dy.parameter(self.W_readout)
             b_readout = dy.parameter(self.b_readout)
         else:
@@ -140,8 +147,6 @@ class EncoderDecoder:
         # init_state = dy.tanh(W_init_state * encoding[-1] + b_init_state)
         dec_state = self.dec_rnn.initial_state([init_state])  # not sure
 
-        # # TODO: not sure about it, concatenate column vectors?
-        # zero_emb = [[0.0]*len(tgt_seq) for _ in range(self.emb_size)]
         tgt_pad, tgt_mask = self.transpose_input(tgt_seq)
         max_len = max([len(sent) for sent in tgt_seq])
         att_ctx = dy.vecInput(self.hidden_dim * 2)
@@ -153,12 +158,12 @@ class EncoderDecoder:
             dec_state = dec_state.add_input(dy.concatenate([input_t, att_ctx]))
             ht = dec_state.output()
             att_ctx, att_weights = self.attention(encoding, ht, batch_size)
-            if config["concat_readout"]:
+            if self.concat_readout:
                 read_out = dy.tanh(dy.affine_transform([b_readout, W_readout, dy.concatenate([ht, att_ctx])]))
             else:
                 read_out = dy.tanh(W_logit_cxt * att_ctx + W_logit_hid * ht + W_logit_input * input_t + b_logit_readout)
-            if config["dropout"] > 0:
-                read_out = dy.dropout(read_out, config["dropout"])
+            if self.dropout > 0:
+                read_out = dy.dropout(read_out, self.dropout)
             prediction = softmax_w * read_out + softmax_b
 
             loss = dy.pickneglogsoftmax_batch(prediction, tgt_pad[i + 1])
@@ -177,12 +182,12 @@ class EncoderDecoder:
 
     def gen_samples(self, src_seq, max_len=30):
         encoding = self.encode([src_seq])
-        beam_size = self.config["beam_size"]
+        beam_size = self.beam_size
 
         W_init_state = dy.parameter(self.W_init)
         b_init_state = dy.parameter(self.b_init)
 
-        if self.config["concat_readout"]:
+        if self.concat_readout:
             W_readout = dy.parameter(self.W_readout)
             b_readout = dy.parameter(self.b_readout)
         else:
@@ -214,7 +219,7 @@ class EncoderDecoder:
                 h_t = dec_states[k].output()
                 att_ctx, att_weights = self.attention(encoding, h_t, 1)
                 att_ctxs[k] = att_ctx
-                if config["concat_readout"]:
+                if self.concat_readout:
                     read_out = dy.tanh(dy.affine_transform([b_readout, W_readout, dy.concatenate([h_t, att_ctx])]))
                 else:
                     read_out = dy.tanh(
@@ -225,8 +230,8 @@ class EncoderDecoder:
             cand_scores = np.concatenate(cand_scores).flatten()
             ranks = cand_scores.argsort()[:(beam_size - dead)]
 
-            cands_indices = ranks / self.tgt_voc_size
-            cands_words = ranks % self.tgt_voc_size
+            cands_indices = ranks / self.tgt_vocab_size
+            cands_words = ranks % self.tgt_vocab_size
             cands_scores = cand_scores[ranks]
 
             new_scores = []
@@ -273,22 +278,28 @@ class EncoderDecoder:
         return loss
 
 
-def train(args, config):
-    print >> sys.stderr, "Configurations: ", args
-    src_vocab, src_id_to_words, src_train = get_vocab(args.train_src, args.src_vocab_size)
-    tgt_vocab, tgt_id_to_words, tgt_train = get_vocab(args.train_tgt, args.tgt_vocab_size)
+def train(args):
+    training_src = read_corpus(args.train_src)  # get vocabulary
+    src_v = Vocab.from_corpus(training_src, args.src_vocab_size)
+    src_train = get_data_id(src_v, training_src)
+    src_vocab, src_id_to_words = src_v.w2i, src_v.i2w
 
-    print >> sys.stderr, "Size of the source and target vocabulary: ", len(src_vocab), len(tgt_vocab)
-    config['src_voc_size'] = len(src_vocab)
-    config['tgt_voc_size'] = len(tgt_vocab)
-    src_dev = get_data(args.dev_src, src_vocab)
-    tgt_dev = get_data(args.dev_tgt, tgt_vocab)
+    training_tgt = read_corpus(args.train_tgt)
+    tgt_v = Vocab.from_corpus(training_tgt, args.tgt_vocab_size)
+    tgt_train = get_data_id(tgt_v, training_tgt)
+    tgt_vocab, tgt_id_to_words = tgt_v.w2i, tgt_v.i2w
+
+    args.src_voc_size = len(src_vocab)
+    args.tgt_voc_size = len(tgt_vocab)
+
+    src_dev = get_data_id(src_v, read_corpus(args.dev_src))
+    tgt_dev = get_data_id(tgt_v, read_corpus(args.dev_tgt))
 
     train_data = zip(src_train, tgt_train)
     dev_data = zip(src_dev, tgt_dev)
 
-    nmt_model = EncoderDecoder(config)
-    trainer = dy.AdamTrainer(nmt_model.model)
+    model = EncoderDecoder(args, src_v, tgt_v, src_vocab, tgt_vocab)
+    trainer = dy.AdamTrainer(model.model)
 
     epochs = 100
     updates = 0
@@ -296,23 +307,25 @@ def train(args, config):
     bad_counter = 0
     total_loss = total_examples = 0
     start_time = time.time()
+    eval_every = args.eval_every
     for epoch in range(epochs):
         for (src_batch, tgt_batch) in data_iterator(train_data, args.batch_size):
             updates += 1
             bs = len(src_batch)
 
-            if updates % args.valid_freq == 0:
-                print >> sys.stderr, "#################  Evaluating bleu score on the validation corpus ##############"
+            if updates % eval_every == 0:
+
                 begin_time = time.time()
-                bleu_score, translation = translate(nmt_model, dev_data, src_id_to_words, tgt_id_to_words)
+                bleu_score, translation = translate(model, dev_data, src_id_to_words, tgt_id_to_words)
                 tt = time.time() - begin_time
-                print >> sys.stderr, "BlEU score = %f. Time %d s elapsed. Avg decoding time per sentence %f s" % (
-                bleu_score, tt, tt * 1.0 / len(dev_data))
+                print  "BlEU score = %f. Time %d s elapsed. Avg decoding time per sentence %f s" % (
+                    bleu_score, tt, tt * 1.0 / len(dev_data))
 
                 if len(valid_history) == 0 or bleu_score > max(valid_history):
                     bad_counter = 0
-                    print("Saving the model....")
-                    nmt_model.save()
+
+                    model.save()
+                    print "Model saved"
                 else:
                     bad_counter += 1
                     if bad_counter >= args.patience:
@@ -320,15 +333,15 @@ def train(args, config):
                         exit(0)
 
                 valid_history.append(bleu_score)
-            loss = nmt_model.get_encdec_loss(src_batch, tgt_batch)
+            loss = model.get_encdec_loss(src_batch, tgt_batch)
             loss_value = loss.value()
             total_loss += loss_value * bs
             total_examples += bs
 
             ppl = np.exp(loss_value * bs / sum([len(s) for s in tgt_batch]))
-            print >> sys.stderr, "Epoch=%d, Updates=%d, Loss=%f, Avg. Loss=%f, PPL=%f, Time taken=%d s" % \
-                                 (epoch + 1, updates + 1, loss_value, total_loss / total_examples, ppl,
-                                  time.time() - start_time)
+            print  "Epoch=%d, Updates=%d, Loss=%f, Avg. Loss=%f, PPL=%f, Time taken=%d s" % \
+                   (epoch + 1, updates + 1, loss_value, total_loss / total_examples, ppl,
+                    time.time() - start_time)
             loss.backward()
             trainer.update()
 
@@ -347,8 +360,8 @@ def test(args, config):
     nmt_model.load()
     bleu_score, translations = translate(nmt_model, test_data, src_id_to_words, tgt_id_to_words)
 
-    print >> sys.stderr, "BLEU on test data = ", bleu_score
-    with open("../obj/" + args.model_name + "_test_hyps.txt", "w") as fout:
+    print  "BLEU on test data = ", bleu_score
+    with open("./obj/" + args.model_name + "_test_hyps.txt", "w") as fout:
         for hyp in translations:
             fout.write(" ".join(hyp[1:-1]) + '\n')
 
@@ -369,14 +382,13 @@ def translate(model, data_pair, src_id_to_words, tgt_id_to_words):
             empty = False
 
         if len(hyp) == 2:
-            print >> sys.stderr, "Empty translation!!!!!!!"
+            print  "Empty translation!!!!!!!"
         references.append([tgt])
         translations.append(hyp)
 
-        print >> sys.stderr, "########################" * 5
-        print >> sys.stderr, "Src sent: ", u" ".join(src[1:-1])
-        print >> sys.stderr, "Tgt sent: ", u" ".join(tgt[1:-1])
-        print >> sys.stderr, "Hypothesis: ", u" ".join(hyp[1:-1])
+        print  "Src sent: ", " ".join(src[1:-1])
+        print  "Tgt sent: ", " ".join(tgt[1:-1])
+        print  "Hypothesis: ", " ".join(hyp[1:-1])
 
     if empty:
         return 0.0, translations
@@ -392,43 +404,34 @@ if __name__ == '__main__':
     parser.add_argument("--att_dim", type=int, default=256)
     parser.add_argument("--beam_size", type=int, default=5)
     parser.add_argument("--batch_size", type=int, default=32)
-    parser.add_argument('--train_tgt', type=str, default="../en-de/train.en-de.low.filt.en")
-    parser.add_argument('--train_src', type=str, default="../en-de/train.en-de.low.filt.de")
-    parser.add_argument('--dev_tgt', type=str, default="../en-de/valid.en-de.low.en")
-    parser.add_argument('--dev_src', type=str, default="../en-de/valid.en-de.low.de")
-    parser.add_argument('--test_tgt', type=str, default="../en-de/test.en-de.low.en")
-    parser.add_argument('--test_src', type=str, default="../en-de/test.en-de.low.de")
-    #     parser.add_argument('--src_vocab_size', type=int, default=3000)
-    #     parser.add_argument('--tgt_vocab_size', type=int, default=2000)
+    parser.add_argument('--train_tgt', type=str, default="./en-de/train.en-de.low.filt.en")
+    parser.add_argument('--train_src', type=str, default="./en-de/train.en-de.low.filt.de")
+    parser.add_argument('--dev_tgt', type=str, default="./en-de/valid.en-de.low.en")
+    parser.add_argument('--dev_src', type=str, default="./en-de/valid.en-de.low.de")
+    parser.add_argument('--test_tgt', type=str, default="./en-de/test.en-de.low.en")
+    parser.add_argument('--test_src', type=str, default="./en-de/test.en-de.low.de")
     parser.add_argument('--src_vocab_size', type=int, default=30000)
     parser.add_argument('--tgt_vocab_size', type=int, default=20000)
-    parser.add_argument('--valid_freq', type=int, default=2500)
     parser.add_argument('--load_from')
     parser.add_argument('--concat_readout', action='store_true', default=False)
     parser.add_argument('--patience', type=int, default=10)
-    parser.add_argument('--model_name', type=str)
+    parser.add_argument('--eval_every', type=int, default=2500)
+    parser.add_argument('--model_name', type=str, default="model")
     parser.add_argument('--dropout', type=float, default=0.5)
-    parser.add_argument('--test', action="store_true", default=False)
 
-    parser.add_argument('--dynet-mem', default=1000, type=int)
-    parser.add_argument('--random_seed', default=792551807, type=int)
+    parser.add_argument('--train', dest='train', action='store_true')
+    parser.add_argument('--test', dest='train', action='store_false')
+
+    parser.add_argument('--dynet-mem', default="6000,5000,1000", type=str)
+    parser.add_argument('--random_seed', default=235109662, type=int)
     parser.add_argument('--for_loop_att', action="store_true", default=False)
     args = parser.parse_args()
 
     np.random.seed(args.random_seed)
-    config = {}
-    config["layers"] = args.layers
-    config["emb_size"] = args.emb_size
-    config["hidden_dim"] = args.hid_dim
-    config["att_dim"] = args.att_dim
-    config["beam_size"] = args.beam_size
-    config["src_voc_size"] = args.src_vocab_size
-    config["tgt_voc_size"] = args.tgt_vocab_size
-    config["model_name"] = args.model_name
-    config["dropout"] = args.dropout
-    config["concat_readout"] = args.concat_readout
-    config["for_loop_att"] = args.for_loop_att
-    if args.test:
-        test(args, config)
+
+    if args.train:
+        print "args.train True, invoking train()"
+        train(args)
     else:
-        train(args, config)
+        print "args.train False, invoking test()"
+        test(args, {})
