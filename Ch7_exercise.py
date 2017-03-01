@@ -25,7 +25,8 @@ def get_batches(sents_pair, batch_size):
     random.shuffle(batches)
     for batch in batches:
         # yield [list(batch[0]), list(batch[1])]
-        yield batch
+        if len(batch)==2 and len(batch[0])>0 and len(batch[1])>0:
+            yield batch
 
 
 def test(args):
@@ -103,7 +104,7 @@ def train(args):
 
     epochs = 20
     updates = 0
-    eval_every = 3000
+    eval_every = 1000
     prev_bleu = []
     bad_counter = 0
     total_loss = total_examples = total_length = 0
