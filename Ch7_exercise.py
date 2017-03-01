@@ -92,6 +92,9 @@ def train(args):
     dev_src = read_corpus(args.dev_src)  # get vocabulary
     dev_src_id = get_data_id(src_vocab, dev_src)
 
+    print "Length of Dev(src) " + str(len(dev_src_id)) + " num of batches " + str(
+        len(dev_src_id) / args.batch_size + 1)
+
     dev_tgt = read_corpus(args.dev_tgt)  # get vocabulary
     dev_tgt_id = get_data_id(tgt_vocab, dev_tgt)
 
@@ -104,7 +107,7 @@ def train(args):
 
     epochs = 20
     updates = 0
-    eval_every = 100
+    eval_every = 500
     prev_bleu = []
     bad_counter = 0
     total_loss = total_examples = total_length = 0
@@ -381,10 +384,13 @@ class EncoderDecoder:
     def decode(self, data_pairs, name, with_reference=False):
         hypotheses = []
         bleu_score = 0
+        count=0
 
         for src_sent, tgt_sent in data_pairs:
             hypothesis = self.translate([src_sent])[0]  # translate is per sent, wrapped as a list
-            print hypothesis.y, hypothesis.score
+            if count<50:
+                print hypothesis.y, hypothesis.score
+                count=count+1
             hypotheses.append(hypothesis)
 
         if with_reference:
