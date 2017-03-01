@@ -296,7 +296,7 @@ class EncoderDecoder:
             y_t = dy.affine_transform([b_y, W_y, readout])
 
             loss = dy.pickneglogsoftmax_batch(y_t, tgt_wids[i])
-            if 0 in tgt_masks[i][-1]:
+            if 0 in tgt_masks[i]:
                 mask_expr = dy.inputVector(tgt_masks[i])
                 # # print len(mask)
                 mask_expr = dy.reshape(mask_expr, (1,), len(tgt_masks[i]))
