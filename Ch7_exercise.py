@@ -495,11 +495,7 @@ def main():
     args = parser.parse_args()
     np.random.seed(args.random_seed * 13 / 7)
 
-    dyparams = dy.DynetParams()
-    dyparams.from_args()
-    print dyparams.keys()
-    dyparams.set_mem(args.dynet_mem)
-    dyparams.init()
+    
 
     if args.train:
         train(args)
