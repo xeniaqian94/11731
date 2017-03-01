@@ -374,7 +374,6 @@ class EncoderDecoder:
             final_hypotheses = [hypotheses[0]]  # if there's no good finished hypotheses.
 
         for hyp in final_hypotheses:
-            # print hyp.y
             hyp.y = [self.tgt_id_to_token[i] for i in hyp.y]
 
         return sorted(final_hypotheses, key=lambda x: x.score, reverse=True)
@@ -385,7 +384,7 @@ class EncoderDecoder:
 
         for src_sent, tgt_sent in data_pairs:
             hypothesis = self.translate([src_sent])[0]  # translate is per sent, wrapped as a list
-            print hypothesis
+            print hypothesis.y, hypothesis.score
             hypotheses.append(hypothesis)
 
         if with_reference:
