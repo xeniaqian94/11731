@@ -310,7 +310,7 @@ class EncoderDecoder:
     def translate(self, src_sent, max_len=200):
 
         beam_size = self.args.beam_size
-        print "Beam size %d " % beam_size
+        # print "Beam size %d " % beam_size
 
         encodings = self.encode(src_sent)
 
