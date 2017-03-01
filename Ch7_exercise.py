@@ -177,6 +177,7 @@ class EncoderDecoder:
         self.attention_size = args.attention_size
         self.layers = args.layers
         self.beam_size = args.beam_size
+        self.dropout=args.dropout
 
         self.src_lookup = self.model.add_lookup_parameters((self.src_vocab_size, self.embed_size))
         self.tgt_lookup = self.model.add_lookup_parameters((self.tgt_vocab_size, self.embed_size))
@@ -290,6 +291,8 @@ class EncoderDecoder:
             hid = dec_state.output()  # equaltion 74
             ctx, alpha_t = self.attention(encoding, hid, batch_size)
             readout = dy.tanh(dy.affine_transform([b_h, W_h, dy.concatenate([hid, ctx])]))
+            if self.dropout>0:
+                read_out = dy.dropout(read_out, self.dropout)
             y_t = dy.affine_transform([b_y, W_y, readout])
 
             loss = dy.pickneglogsoftmax_batch(y_t, tgt_wids[i])
@@ -464,7 +467,7 @@ def main():
     parser.add_argument("--hidden_size", type=int, default=512)
     parser.add_argument("--attention_size", type=int, default=256)
     parser.add_argument("--beam_size", type=int, default=5)
-    parser.add_argument("--batch_size", type=int, default=16)
+    parser.add_argument("--batch_size", type=int, default=32)
 
     parser.add_argument('--src_vocab_size', type=int, default=20000)
     parser.add_argument('--tgt_vocab_size', type=int, default=20000)
