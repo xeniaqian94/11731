@@ -51,7 +51,7 @@ def test(args):
 
     test_pair = zip(test_src_id, test_tgt_id)
 
-    hypotheses, bleu_score = model.decode(test_pair)
+    hypotheses, bleu_score = model.decode(test_pair, "test", True)
 
     print "BLEU score on test set %f" % bleu_score
 
@@ -103,7 +103,7 @@ def train(args):
 
     epochs = 20
     updates = 0
-    eval_every = 50
+    eval_every = 3000
     prev_bleu = []
     bad_counter = 0
     total_loss = total_examples = total_length = 0
@@ -114,7 +114,7 @@ def train(args):
             batch_size = len(src_batch)
 
             if updates % eval_every == 0:
-                bleu_score, translation = model.decode(dev_pair, True)
+                bleu_score, translation = model.decode(dev_pair, "validation", True)
                 print "Updates=%d, BlEU score = %f" % (updates, bleu_score)
 
                 if len(prev_bleu) == 0 or bleu_score > max(prev_bleu):
@@ -130,16 +130,15 @@ def train(args):
             src_encodings = model.encode(src_batch)
 
             decode_loss = model.decode_loss(src_encodings, tgt_batch)
-
             loss_value = decode_loss.value()
 
-            total_loss += loss_value
+            total_loss += loss_value * batch_size
             total_examples += batch_size
 
             batch_length = sum([len(s) for s in tgt_batch])
             total_length += batch_length
 
-            ppl = np.exp(loss_value / batch_length)
+            ppl = np.exp(loss_value *batch_size/ batch_length)
             total_ppl = np.exp(total_loss / total_length)
             print "Epoch=%d, Updates=%d, Pairs_Porcessed=%d, Loss=%f, Avg. Loss=%f, PPL(for this batch)=%f, PPL(overall)=%f, Time taken=%d s" % \
                   (epoch + 1, updates + 1, total_examples, loss_value, total_loss / total_examples, ppl, total_ppl,
@@ -160,14 +159,14 @@ class EncoderDecoder:
         self.src_vocab_size = self.src_vocab.size()
 
         # self.tgt_token_to_id = args['tgt_token_to_id']
-        self.tgt_vocab, self.tgt_id_to_token, self.tgt_token_to_id = tgt_vocab, tgt_vocab.w2i, tgt_vocab.i2w
+        self.tgt_vocab, self.tgt_token_to_id, self.tgt_id_to_token = tgt_vocab, tgt_vocab.w2i, tgt_vocab.i2w
         self.tgt_vocab_size = self.tgt_vocab.size()
 
         self.embed_size = args.embed_size
         self.hidden_size = args.hidden_size
         self.attention_size = args.attention_size
         self.layers = args.layers
-        self.beam_size=args.beam_size
+        self.beam_size = args.beam_size
 
         self.src_lookup = self.model.add_lookup_parameters((self.src_vocab_size, self.embed_size))
         self.tgt_lookup = self.model.add_lookup_parameters((self.tgt_vocab_size, self.embed_size))
@@ -247,6 +246,8 @@ class EncoderDecoder:
         r2l_state = self.r2l_builder.initial_state()
 
         wids, masks = transpose_batch(src_sents)
+        # print wids
+        # print masks
 
         l2r_wid_embeds = [dy.lookup_batch(self.src_lookup, wid) for wid in wids]
         r2l_wid_embeds = l2r_wid_embeds[::-1]
@@ -288,8 +289,9 @@ class EncoderDecoder:
                 mask_expr = dy.reshape(mask_expr, (1,), len(tgt_masks[i]))
                 loss = loss * mask_expr
             losses.append(loss)
+        loss = dy.esum(losses)
 
-        return dy.sum_batches(dy.esum(losses))
+        return dy.sum_batches(loss / batch_size)
 
     def attention(self, encoding, hidden, batch_size):  # calculating attention score
 
@@ -309,7 +311,7 @@ class EncoderDecoder:
         beam_size = self.args.beam_size
         # print "Beam size %d " % beam_size
 
-        encodings = self.encode(src_sent, True)
+        encodings = self.encode(src_sent)
 
         W_h = dy.parameter(self.W_h)
         b_h = dy.parameter(self.b_h)
@@ -325,7 +327,7 @@ class EncoderDecoder:
         final_hypotheses = []
         hypotheses = [Hypothesis(
             state=self.dec_builder.initial_state([dy.tanh(W_init * encodings[-1] + b_init)]),
-            y=[self.tgt_vocab['<s>']],
+            y=[self.tgt_vocab.w2i['<s>']],
             ctx_tm1=dy.vecInput(self.args.hidden_size * 2),
             score=0)]
 
@@ -360,7 +362,7 @@ class EncoderDecoder:
                                  ctx_tm1=prev_hyp.ctx_tm1,
                                  score=hyp_score)
 
-                if word_id == self.tgt_vocab['</s>']:
+                if word_id == self.tgt_vocab.w2i['</s>']:
                     final_hypotheses.append(hyp)
                 else:
                     new_hypotheses.append(hyp)
@@ -371,11 +373,12 @@ class EncoderDecoder:
             final_hypotheses = [hypotheses[0]]  # if there's no good finished hypotheses.
 
         for hyp in final_hypotheses:
-            hyp.y = [self.tgt_vocab_id2word[i] for i in hyp.y]
+            print hyp.y
+            hyp.y = [self.tgt_id_to_token[i] for i in hyp.y]
 
         return sorted(final_hypotheses, key=lambda x: x.score, reverse=True)
 
-    def decode(self, data_pairs, with_reference=False):
+    def decode(self, data_pairs, name, with_reference=False):
         hypotheses = []
         bleu_score = 0
 
@@ -386,7 +389,7 @@ class EncoderDecoder:
         if with_reference:
             bleu_score = corpus_bleu([[tgt_sent[1:-1]] for src_sent, tgt_sent in data_pairs],
                                      [hypothesis[1:-1] for hypothesis in hypotheses])
-        f = open(self.args.output + "embed_" + str(self.args.embed_size) + "_hidden_" + str(
+        f = open(self.args.output + name + "_embed_" + str(self.args.embed_size) + "_hidden_" + str(
             self.args.hidden_size) + "_attn_" + str(
             self.args.attention_size + "_beam_" + str(self.args.beam_size)), "w")
         for hypothesis in hypotheses:
