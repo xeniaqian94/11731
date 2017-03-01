@@ -104,7 +104,7 @@ def train(args):
 
     epochs = 20
     updates = 0
-    eval_every = 1000
+    eval_every = 100
     prev_bleu = []
     bad_counter = 0
     total_loss = total_examples = total_length = 0
@@ -310,7 +310,7 @@ class EncoderDecoder:
     def translate(self, src_sent, max_len=200):
 
         beam_size = self.args.beam_size
-        # print "Beam size %d " % beam_size
+        print "Beam size %d " % beam_size
 
         encodings = self.encode(src_sent)
 
@@ -389,7 +389,7 @@ class EncoderDecoder:
 
         if with_reference:
             bleu_score = corpus_bleu([[tgt_sent[1:-1]] for src_sent, tgt_sent in data_pairs],
-                                     [hypothesis[1:-1] for hypothesis in hypotheses])
+                                     [[hypothesis[1:-1]] for hypothesis in hypotheses])
         f = open(self.args.output + name + "_embed_" + str(self.args.embed_size) + "_hidden_" + str(
             self.args.hidden_size) + "_attn_" + str(
             self.args.attention_size + "_beam_" + str(self.args.beam_size)), "w")
