@@ -153,7 +153,7 @@ class EncoderDecoder:
         self.args = args
         # self.src_token_to_id = args['src_token_to_id']
         self.src_vocab, self.src_token_to_id, self.src_id_to_token = src_vocab, src_vocab.w2i, src_vocab.i2w
-        self.src_vocab_size=self.src_vocab.size()
+        self.src_vocab_size = self.src_vocab.size()
 
         # self.tgt_token_to_id = args['tgt_token_to_id']
         self.tgt_vocab, self.tgt_id_to_token, self.tgt_token_to_id = tgt_vocab, tgt_vocab.w2i, tgt_vocab.i2w
@@ -489,11 +489,17 @@ def main():
     parser.add_argument('--output', type=str, default='../output/')
     parser.add_argument('--dropout', type=float, default=0.5)
 
-    parser.add_argument('--dynet-mem', default=10000, type=int)
+    parser.add_argument('--dynet_mem', default=10000, type=int)
     parser.add_argument('--random_seed', default=235109662, type=int)
     parser.add_argument('--for_loop_att', action="store_true", default=False)
     args = parser.parse_args()
     np.random.seed(args.random_seed * 13 / 7)
+
+    dyparams = dy.DynetParams()
+    dyparams.from_args()
+    print dyparams.keys()
+    dyparams.set_mem(args.dynet_mem)
+    dyparams.init()
 
     if args.train:
         train(args)
