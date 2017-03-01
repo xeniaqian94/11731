@@ -31,10 +31,7 @@ class Vocab:
         # print "w2i for <unk> <s> </s> " + str(w2i["<unk>"]) + str(w2i["<s>"]) + str(w2i["</s>"])
 
         [w2i[key] for key, value in sorted_freqs[:top - 1] if value > 1]  # eliminate singleton
-
-
         vocab=Vocab(w2i)
-
         return vocab
 
     def size(self):
@@ -50,9 +47,7 @@ class Vocab:
 def get_data_id(src_vocab, data):
     data_id = []
     for sent in data:
-
         data_id.append([src_vocab.word2Wid(word) for word in sent])
-
     return data_id
 
 
