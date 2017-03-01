@@ -11,22 +11,40 @@ import argparse
 # 18.6 BLEU score
 
 def get_batches(sents_pair, batch_size):
-    length_bucket = defaultdict(list)
+    # length_bucket = defaultdict(list)
+    # for pair in sents_pair:
+    #     length_bucket[len(pair[0])].append(pair)
+    # batches = []
+    # for length in length_bucket:
+    #     pairs = length_bucket[length]
+    #     # print "Batch" + str(length) + str(len(pairs))
+    #     batch_ids = [x * batch_size for x in range(len(pairs) / batch_size + 1)]
+    #     random.shuffle(batch_ids)
+    #     for i, sid in enumerate(batch_ids, 1):
+    #         batches.append(tuple(zip(*pairs[sid:sid + batch_size])))
+    # random.shuffle(batches)
+    # for batch in batches:
+    #     # yield [list(batch[0]), list(batch[1])]
+    #     if len(batch) == 2 and len(batch[0]) > 0 and len(batch[1]) > 0:
+    #         yield batch
+    buckets = defaultdict(list)
     for pair in sents_pair:
-        length_bucket[len(pair[0])].append(pair)
+        src = pair[0]
+        buckets[len(src)].append(pair)
+
     batches = []
-    for length in length_bucket:
-        pairs = length_bucket[length]
-        # print "Batch" + str(length) + str(len(pairs))
-        batch_ids = [x * batch_size for x in range(len(pairs) / batch_size + 1)]
-        random.shuffle(batch_ids)
-        for i, sid in enumerate(batch_ids, 1):
-            batches.append(tuple(zip(*pairs[sid:sid + batch_size])))
-    random.shuffle(batches)
+    for src_len in buckets:
+        bucket = buckets[src_len]
+        np.random.shuffle(bucket)
+        num_batches = int(np.ceil(len(bucket) * 1.0 / batch_size))
+        for i in range(num_batches):
+            cur_batch_size = batch_size if i < num_batches - 1 else len(bucket) - batch_size * i
+            batches.append(([bucket[i * batch_size + j][0] for j in range(cur_batch_size)],
+                            [bucket[i * batch_size + j][1] for j in range(cur_batch_size)]))
+
+    np.random.shuffle(batches)
     for batch in batches:
-        # yield [list(batch[0]), list(batch[1])]
-        if len(batch) == 2 and len(batch[0]) > 0 and len(batch[1]) > 0:
-            yield batch
+        yield batch
 
 
 def test(args):
@@ -193,12 +211,12 @@ class EncoderDecoder:
 
         # initial input parameter for stage 0 in decoding
         self.W_init = self.model.add_parameters((self.hidden_size, args.hidden_size * 2))
-        self.b_init = self.model.add_parameters((self.hidden_size))
+        self.b_init = self.model.add_parameters((self.hidden_size,1))
         self.b_init.zero()
 
         # target word softmax
         self.W_y = self.model.add_parameters((self.tgt_vocab_size, self.embed_size))
-        self.b_y = self.model.add_parameters((self.tgt_vocab_size))
+        self.b_y = self.model.add_parameters((self.tgt_vocab_size, ))
         self.b_y.zero()
 
         # attention
@@ -299,12 +317,12 @@ class EncoderDecoder:
             if 0 in tgt_masks[i]:
                 mask_expr = dy.inputVector(tgt_masks[i])
                 # # print len(mask)
-                mask_expr = dy.reshape(mask_expr, (1,), len(tgt_masks[i]))
+                mask_expr = dy.reshape(mask_expr, (1,),batch_size)
                 loss = loss * mask_expr
             losses.append(loss)
         loss = dy.esum(losses)
 
-        return dy.sum_batches(loss / batch_size)
+        return dy.sum_batches(loss) / batch_size
 
     def attention(self, encoding, hidden, batch_size):  # calculating attention score
 
