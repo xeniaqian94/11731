@@ -202,12 +202,12 @@ class EncoderDecoder:
     # Training step over a single sentence pair
     def save(self):
         self.model.save(
-            "../model/embed_" + str(self.args.embed_size) + "_hidden_" + str(self.args.hidden_size) + "_attn_" + str(
+            "./model/embed_" + str(self.args.embed_size) + "_hidden_" + str(self.args.hidden_size) + "_attn_" + str(
                 self.args.attention_size))
 
     def load(self):
         self.model.load(
-            "../model/embed_" + str(self.args.embed_size) + "_hidden_" + str(self.args.hidden_size) + "_attn_" + str(
+            "./model/embed_" + str(self.args.embed_size) + "_hidden_" + str(self.args.hidden_size) + "_attn_" + str(
                 self.args.attention_size))
 
     def __step(self, instance):
@@ -384,25 +384,42 @@ class EncoderDecoder:
     def decode(self, data_pairs, name, with_reference=False):
         hypotheses = []
         bleu_score = 0
-        count=0
+        count = 0
 
+        references = []
+        translations = []
         for src_sent, tgt_sent in data_pairs:
             hypothesis = self.translate([src_sent])[0]  # translate is per sent, wrapped as a list
-            if count<50:
-                print hypothesis.y, hypothesis.score
-                count=count+1
-            hypotheses.append(hypothesis)
+            if count < 5:
+                print hypothesis.y, hypothesis.score, self.translate([src_sent])[1].y,self.translate([src_sent])[1].score
+                count = count + 1
+                print "Source: "+" ".join([self.tgt_id_to_token[i] for i in src_sent])
+                print "Reference: "+" ".join([self.tgt_id_to_token[i] for i in tgt_sent])
+                print "Translation: "+" ".join(hypothesis.y)
 
+            else:
+                break
+            # print len(translations),len(references)
+            translations.append(hypothesis.y)
+            # print [self.tgt_id_to_token[i] for i in tgt_sent]
+            references.append([[self.tgt_id_to_token[i] for i in tgt_sent]])
+
+        bleu_score=0
         if with_reference:
-            bleu_score = corpus_bleu([[tgt_sent[1:-1]] for src_sent, tgt_sent in data_pairs],
-                                     [[hypothesis.y[1:-1]] for hypothesis in hypotheses])
+            try:
+                bleu_score = corpus_bleu([[ref[1:-1]] for ref in references],[tran[1:-1] for tran in translations])
+            except ZeroDivisionError:
+                print "translation not mature enough?"
+
+            # bleu_score = corpus_bleu([[tgt_sent[1:-1]] for src_sent, tgt_sent in data_pairs],
+            #                          [[hypothesis.y[1:-1]] for hypothesis in hypotheses])
         f = open(self.args.output + name + "_embed_" + str(self.args.embed_size) + "_hidden_" + str(
             self.args.hidden_size) + "_attn_" + str(
-            self.args.attention_size + "_beam_" + str(self.args.beam_size)), "w")
-        for hypothesis in hypotheses:
-            f.write(" ".join(hypothesis[1:-1]) + "\n")
+            self.args.attention_size) + "_beam_" + str(self.args.beam_size), "w")
+        for tran in translations:
+            f.write(" ".join(tran[1:-1]) + "\n")
 
-        return hypotheses, bleu_score
+        return bleu_score,hypotheses
 
 
 def transpose_batch(src_batch):
@@ -441,9 +458,9 @@ def main():
 
     parser.add_argument('--load_from')
     parser.add_argument('--concat_readout', action='store_true', default=False)
-    parser.add_argument('--tolerance', type=int, default=10)
+    parser.add_argument('--tolerance', type=int, default=20)
     parser.add_argument('--model_name', type=str, default="model_")
-    parser.add_argument('--output', type=str, default='../output/')
+    parser.add_argument('--output', type=str, default='./output/')
     parser.add_argument('--dropout', type=float, default=0.5)
 
     parser.add_argument('--dynet-mem', default="6000,5000,1000", type=str)
