@@ -489,7 +489,7 @@ def main():
     parser.add_argument('--output', type=str, default='../output/')
     parser.add_argument('--dropout', type=float, default=0.5)
 
-    parser.add_argument('--dynet_mem', default=10000, type=int)
+    # parser.add_argument('--dynet_mem', default=10000, type=int)
     parser.add_argument('--random_seed', default=235109662, type=int)
     parser.add_argument('--for_loop_att', action="store_true", default=False)
     args = parser.parse_args()
