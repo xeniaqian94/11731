@@ -292,7 +292,7 @@ class EncoderDecoder:
             ctx, alpha_t = self.attention(encoding, hid, batch_size)
             readout = dy.tanh(dy.affine_transform([b_h, W_h, dy.concatenate([hid, ctx])]))
             if self.dropout>0:
-                readout = dy.dropout(read_out, self.dropout)
+                readout = dy.dropout(readout, self.dropout)
             y_t = dy.affine_transform([b_y, W_y, readout])
 
             loss = dy.pickneglogsoftmax_batch(y_t, tgt_wids[i])
