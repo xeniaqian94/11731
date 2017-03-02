@@ -96,10 +96,14 @@ class EncoderDecoder:
         self.EOS = 2
 
     def save(self):
-        self.model.save("./model/" + self.model_name + "_params.bin")
+        self.model.save(
+            "./model/embed_" + str(self.emb_size) + "_hidden_" + str(self.hidden_dim) + "_attn_" + str(
+                self.att_dim))
 
     def load(self):
-        self.model.load("./model/" + self.model_name + "_params.bin")
+        self.model.load(
+            "./model/embed_" + str(self.emb_size) + "_hidden_" + str(self.hidden_dim) + "_attn_" + str(
+                self.att_dim))
 
     def transpose_input(self, seq):
         max_len = max([len(sent) for sent in seq])
@@ -322,13 +326,13 @@ def train(args):
     updates = 0
     valid_history = []
     bad_counter = 0
-    total_loss = total_examples = 0
+    total_loss = total_examples = total_length = 0
     start_time = time.time()
     eval_every = args.eval_every
     for epoch in range(epochs):
         for (src_batch, tgt_batch) in get_batches(train_data, args.batch_size):
             updates += 1
-            bs = len(src_batch)
+            batch_size = len(src_batch)
 
             if updates % eval_every == 0:
 
@@ -350,10 +354,29 @@ def train(args):
                         exit(0)
 
                 valid_history.append(bleu_score)
+
+            src_encodings = model.encode(src_batch)
+            decode_loss = model.decode_loss(src_encodings, tgt_batch)
+            loss_value = decode_loss.value()
+
+            total_loss += loss_value * batch_size
+            total_examples += batch_size
+
+            batch_length = sum([len(s) for s in tgt_batch])
+            total_length += batch_length
+
+            ppl = np.exp(loss_value * batch_size / batch_length)
+            total_ppl = np.exp(total_loss / total_length)
+            print "Epoch=%d, Updates=%d, Pairs_Porcessed=%d, Loss=%f, Avg. Loss=%f, PPL(for this batch)=%f, PPL(overall)=%f, Time taken=%d s" % \
+                  (epoch + 1, updates + 1, total_examples, loss_value, total_loss / total_examples, ppl, total_ppl,
+                   time.time() - start_time)
+            decode_loss.backward()
+            model.trainer.update()
+
             loss = model.get_encdec_loss(src_batch, tgt_batch)
             loss_value = loss.value()
-            total_loss += loss_value * bs
-            total_examples += bs
+            total_loss += loss_value * batch_size
+            total_examples += batch_size
 
             ppl = np.exp(loss_value * bs / sum([len(s) for s in tgt_batch]))
             print  "Epoch=%d, Updates=%d, Loss=%f, Avg. Loss=%f, PPL=%f, Time taken=%d s" % \
@@ -361,8 +384,6 @@ def train(args):
                     time.time() - start_time)
             loss.backward()
             trainer.update()
-
-
 
 
 def test(args, config):
