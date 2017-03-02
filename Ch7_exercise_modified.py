@@ -31,24 +31,24 @@ def get_batches(sents_pair, batch_size):
         # yield [list(batch[0]), list(batch[1])]
         if len(batch) == 2 and len(batch[0]) > 0 and len(batch[1]) > 0:
             yield batch
-    # buckets = defaultdict(list)
-    # for pair in sents_pair:
-    #     src = pair[0]
-    #     buckets[len(src)].append(pair)
-    #
-    # batches = []
-    # for src_len in buckets:
-    #     bucket = buckets[src_len]
-    #     np.random.shuffle(bucket)
-    #     num_batches = int(np.ceil(len(bucket) * 1.0 / batch_size))
-    #     for i in range(num_batches):
-    #         cur_batch_size = batch_size if i < num_batches - 1 else len(bucket) - batch_size * i
-    #         batches.append(([bucket[i * batch_size + j][0] for j in range(cur_batch_size)],
-    #                         [bucket[i * batch_size + j][1] for j in range(cur_batch_size)]))
-    #
-    # np.random.shuffle(batches)
-    # for batch in batches:
-    #     yield batch
+            # buckets = defaultdict(list)
+            # for pair in sents_pair:
+            #     src = pair[0]
+            #     buckets[len(src)].append(pair)
+            #
+            # batches = []
+            # for src_len in buckets:
+            #     bucket = buckets[src_len]
+            #     np.random.shuffle(bucket)
+            #     num_batches = int(np.ceil(len(bucket) * 1.0 / batch_size))
+            #     for i in range(num_batches):
+            #         cur_batch_size = batch_size if i < num_batches - 1 else len(bucket) - batch_size * i
+            #         batches.append(([bucket[i * batch_size + j][0] for j in range(cur_batch_size)],
+            #                         [bucket[i * batch_size + j][1] for j in range(cur_batch_size)]))
+            #
+            # np.random.shuffle(batches)
+            # for batch in batches:
+            #     yield batch
 
 
 class EncoderDecoder:
@@ -407,7 +407,11 @@ def translate(model, data_pair, src_id_to_words, tgt_id_to_words):
     translations = []
     references = []
     empty = True
+    count = 0
     for src_sent, tgt_sent in data_pair:
+        count = count + 1
+        if count > 100:
+            break
         scores, samples = model.gen_samples(src_sent, 200)
         sample = samples[np.array(scores).argmin()]
 
@@ -494,51 +498,6 @@ class Vocab:
     def from_corpus(cls, corpus, top=20000):
         freqs = Counter(chain(*corpus))
         # print len(freqs)
-        sorted_freqs = sorted(freqs.iteritems(), key=operator.itemgetter(1), reverse=True)
-
-        w2i = defaultdict(count(0).next)
-        w2i["<unk>"]
-        w2i["<s>"]
-        w2i["</s>"]
-        # print "w2i for <unk> <s> </s> " + str(w2i["<unk>"]) + str(w2i["<s>"]) + str(w2i["</s>"])
-
-        [w2i[key] for key, value in sorted_freqs[:top - 1] if value > 1]  # eliminate singleton
-        vocab = Vocab(w2i)
-        return vocab
-
-    def size(self):
-        return len(self.w2i.keys())
-
-    def word2Wid(self, word):
-        if word in self.w2i:
-            return self.w2i[word]
-        else:
-            return self.w2i["<unk>"]
-
-
-def get_data_id(src_vocab, data):
-    data_id = []
-    for sent in data:
-        data_id.append([src_vocab.word2Wid(word) for word in sent])
-    return data_id
-
-
-def read_corpus(fname):
-    data = []
-    with file(fname) as fh:
-        for line in fh:
-            sent = line.strip().split()
-            data.append(["<s>"] + sent + ["</s>"])
-            # yield ["<s>"] + sent + ["</s>"]
-    return data
-
-
-class Hypothesis(object):
-    def __init__(self, state, y, ctx_tm1, score):
-        self.state = state
-        self.y = y
-        self.ctx_tm1 = ctx_tm1
-        self.score = score
         sorted_freqs = sorted(freqs.iteritems(), key=operator.itemgetter(1), reverse=True)
 
         w2i = defaultdict(count(0).next)
