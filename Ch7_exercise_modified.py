@@ -398,7 +398,7 @@ def test(args):
     #
     src_blind = get_data_id(src_v, read_corpus(args.blind_src))
 
-    print "Blind data line count total " + len(src_blind)
+    print "Blind data line count total " + str(len(src_blind))
 
     translations = translate_blind(model, src_blind, src_id_to_words, tgt_id_to_words)
 
