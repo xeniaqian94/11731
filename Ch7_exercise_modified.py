@@ -182,9 +182,8 @@ class EncoderDecoder:
 
         return loss
 
-    def gen_samples(self, src_seq, max_len=30):
+    def gen_samples(self, src_seq, max_len=30,beam_size=5):
         encoding = self.encode([src_seq])
-        beam_size = self.beam_size
 
         W_init_state = dy.parameter(self.W_init)
         b_init_state = dy.parameter(self.b_init)
@@ -357,6 +356,7 @@ def train(args):
 
 
 def test(args):
+    print "Beam size "+str(args.beam_size)
     training_src = read_corpus(args.train_src)  # get vocabulary
     src_v = Vocab.from_corpus(training_src, args.src_vocab_size)
     src_vocab, src_id_to_words = src_v.w2i, src_v.i2w
@@ -377,7 +377,7 @@ def test(args):
     model = EncoderDecoder(args, src_v, tgt_v, src_vocab, tgt_vocab)
     model.load(args.model_name)
 
-    bleu_score, translations = translate(model, test_data, src_id_to_words, tgt_id_to_words)
+    bleu_score, translations = translate(model, test_data, src_id_to_words, tgt_id_to_words,args.beam_size)
 
     print  "BLEU on test data = " + str(bleu_score) + " " + str(args.beam_size)
     with open("./model/" + args.model_name + "_test_translations_" + str(args.beam_size) + ".txt", "w") as fout:
@@ -388,7 +388,7 @@ def test(args):
     tgt_dev = get_data_id(tgt_v, read_corpus(args.dev_tgt))
     dev_data = zip(src_dev, tgt_dev)
 
-    bleu_score, translations = translate(model, dev_data, src_id_to_words, tgt_id_to_words)
+    bleu_score, translations = translate(model, dev_data, src_id_to_words, tgt_id_to_words,args.beam_size)
 
     print  "BLEU on dev data = " + str(bleu_score) + " " + str(args.beam_size)
     with open("./model/" + args.model_name + "_dev_translations_" + str(args.beam_size) + ".txt", "w") as fout:
@@ -406,7 +406,7 @@ def test(args):
             fout.write(" ".join(hyp[1:-1]) + '\n')
 
 
-def translate(model, data_pair, src_id_to_words, tgt_id_to_words):
+def translate(model, data_pair, src_id_to_words, tgt_id_to_words,beam_size=5):
     translations = []
     references = []
     empty = True
@@ -415,7 +415,7 @@ def translate(model, data_pair, src_id_to_words, tgt_id_to_words):
     for src_sent, tgt_sent in data_pair:
         count = count + 1
 
-        scores, samples = model.gen_samples(src_sent, 200)
+        scores, samples = model.gen_samples(src_sent, 200,beam_size=5)
         sample = samples[np.array(scores).argmin()]
 
         src = [src_id_to_words[i] for i in src_sent]
