@@ -41,7 +41,7 @@ class Vocab:
         w2i["</s>"]
         # print "w2i for <unk> <s> </s> " + str(w2i["<unk>"]) + str(w2i["<s>"]) + str(w2i["</s>"])
 
-        [w2i[key] for key, value in sorted_freqs[:top - 1] if value > 1]  # eliminate singleton
+        [w2i[key] for key, value in sorted_freqs[:top - 3] if value > 1]  # eliminate singleton
         vocab = Vocab(w2i)
         return vocab
 
@@ -212,11 +212,10 @@ class EncoderDecoder:
         return dy.sum_batches(loss) / batch_size
 
     def gen_samples(self, src_seq, max_len=30, beam_size=5):
-        beam_size = self.args.beam_size
         encoding = self.encode([src_seq])
 
-        W_init_state = dy.parameter(self.W_init)
-        b_init_state = dy.parameter(self.b_init)
+        W_init = dy.parameter(self.W_init)
+        b_init = dy.parameter(self.b_init)
 
         W_logit_cxt = dy.parameter(self.W_logit_cxt)
         W_logit_input = dy.parameter(self.W_logit_input)
@@ -226,72 +225,56 @@ class EncoderDecoder:
         softmax_w = dy.parameter(self.softmax_W)
         softmax_b = dy.parameter(self.softmax_b)
 
-        live = 1
-        dead = 0
+        state = self.dec_builder.initial_state(dy.tanh(dy.affine_transform(b_init, W_init, encoding[-1])))
+        sample = [1]
+        score = 0
+        ctx = dy.vecInput(self.args.hid_dim * 2)
+
+        hypotheses_pool = [(state, sample, score, ctx)]
 
         final_scores = []
         final_samples = []
-
-        scores = np.zeros(live)
-        dec_states = [
-            self.dec_builder.initial_state([dy.tanh(dy.affine_transform([b_init_state, W_init_state, encoding[-1]]))])]
-        att_ctxs = [dy.vecInput(self.args.hid_dim * 2)]
-        samples = [[1]]
-
-        for ii in range(max_len):
+        live = 1
+        for i in range(max_len):
             cand_scores = []
             for k in range(live):
-                y_t = dy.lookup(self.tgt_lookup, samples[k][-1])
-                dec_states[k] = dec_states[k].add_input(dy.concatenate([y_t, att_ctxs[k]]))
-                h_t = dec_states[k].output()
-                att_ctx, att_weights = self.attention(encoding, h_t, 1)
-                att_ctxs[k] = att_ctx
+                y_t = dy.lookup(self.tgt_lookup, hypotheses_pool[k][1][-1])
+                hypotheses_pool[k][0] = hypotheses_pool[k][0].add_input(dy.concatenate([y_t, hypotheses_pool[k][3]]))
+                h_t = hypotheses_pool[k][0].output()
+                hypotheses_pool[k][3], att_weights = self.attention(encoding, h_t, 1)
                 read_out = dy.tanh(
-                    W_logit_cxt * att_ctx + W_logit_hid * h_t + W_logit_input * y_t + b_logit_readout)
+                    W_logit_cxt * hypotheses_pool[k][3] + W_logit_hid * h_t + W_logit_input * y_t + b_logit_readout)
                 prediction = dy.log_softmax(softmax_w * read_out + softmax_b).npvalue()
-                cand_scores.append(scores[k] - prediction)
+                cand_scores.append(hypotheses_pool[k][2] - prediction)
 
             cand_scores = np.concatenate(cand_scores).flatten()
-            ranks = cand_scores.argsort()[:(beam_size - dead)]
+            ranks = (cand_scores).argsort()[:(beam_size - len(final_scores))]
 
-            cands_indices = ranks / self.tgt_vocab_size
-            cands_words = ranks % self.tgt_vocab_size
+            cands_indices = ranks / self.tgt_vocab_size  # which k generated it
+            cands_words = ranks % self.tgt_vocab_size  # which word is the next best for this k
             cands_scores = cand_scores[ranks]
 
-            new_scores = []
-            new_dec_states = []
-            new_att_ctxs = []
-            new_samples = []
+            new_pool = []
             for idx, [bidx, widx] in enumerate(zip(cands_indices, cands_words)):
-                new_scores.append(copy.copy(cands_scores[idx]))
-                new_dec_states.append(dec_states[bidx])
-                new_att_ctxs.append(att_ctxs[bidx])
-                new_samples.append(samples[bidx] + [widx])
-
-            scores = []
-            dec_states = []
-            att_ctxs = []
-            samples = []
-
-            for idx, sample in enumerate(new_samples):
-                if new_samples[idx][-1] == 2:
-                    dead += 1
-                    final_samples.append(new_samples[idx])
-                    final_scores.append(new_scores[idx])
+                prev_hyp = hypotheses_pool[bidx]
+                new_hyp = (prev_hyp[0], prev_hyp[1] + [widx], prev_hyp[2] + cands_scores[idx], prev_hyp[3])
+                if widx == 2:
+                    final_scores.append(new_hyp[2])
+                    final_samples.append(new_hyp[1])
                 else:
-                    dec_states.append(new_dec_states[idx])
-                    att_ctxs.append(new_att_ctxs[idx])
-                    samples.append(new_samples[idx])
-                    scores.append(new_scores[idx])
-            live = beam_size - dead
+                    new_pool.append(new_hyp)
 
-            if dead == beam_size:
+            hypotheses_pool = new_pool
+
+            live = beam_size - len(final_scores)
+
+            if live == 0:
                 break
 
         if live > 0:
             for idx in range(live):
-                final_scores.append(scores[idx])
-                final_samples.append(samples[idx])
+                final_scores.append(hypotheses_pool[idx][2])
+                final_samples.append(hypotheses_pool[idx][1])
 
         return final_scores, final_samples
 
@@ -413,7 +396,7 @@ def test(args):
 
     print "Blind data line count total " + str(len(src_blind))
 
-    translations = translate_blind(model, src_blind, src_id_to_words, tgt_id_to_words)
+    translations = translate_blind(model, src_blind, src_id_to_words, tgt_id_to_words, args.beam_size)
 
     f_blind = open("./model/" + args.model_name + "_blind_translations_" + str(args.beam_size) + ".txt", "w")
     for hyp in translations:
@@ -429,8 +412,8 @@ def translate(model, data_pair, src_id_to_words, tgt_id_to_words, beam_size=5):
     for src_sent, tgt_sent in data_pair:
         count = count + 1
 
-        scores, samples = model.gen_samples(src_sent, 200, beam_size=5)
-        sample = samples[np.array(scores).argmin()]
+        scores, samples = model.gen_samples(src_sent, 200, beam_size)
+        sample = samples[np.array(scores).argmin()]  # one of the best
 
         src = [src_id_to_words[i] for i in src_sent]
         tgt = [tgt_id_to_words[i] for i in tgt_sent]
@@ -453,10 +436,10 @@ def translate(model, data_pair, src_id_to_words, tgt_id_to_words, beam_size=5):
     return bleu_score, translations
 
 
-def translate_blind(model, src_sents, src_id_to_words, tgt_id_to_words):
+def translate_blind(model, src_sents, src_id_to_words, tgt_id_to_words, beam_size=5):
     translations = []
     for src_sent in src_sents:
-        scores, samples = model.gen_samples(src_sent, 200)
+        scores, samples = model.gen_samples(src_sent, 200, beam_size)
         sample = samples[np.array(scores).argmin()]
         hyp = [tgt_id_to_words[i] for i in sample]
         translations.append(hyp)
