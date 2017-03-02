@@ -225,7 +225,7 @@ class EncoderDecoder:
         softmax_w = dy.parameter(self.softmax_W)
         softmax_b = dy.parameter(self.softmax_b)
 
-        state = self.dec_builder.initial_state(dy.tanh(dy.affine_transform(b_init, W_init, encoding[-1])))
+        state = self.dec_builder.initial_state(dy.tanh(dy.affine_transform([b_init, W_init, encoding[-1]])))
         sample = [1]
         score = 0
         ctx = dy.vecInput(self.args.hid_dim * 2)
@@ -484,11 +484,3 @@ if __name__ == '__main__':
     else:
         print "args.train False, invoking test()"
         test(args)
-
-
-class Hypothesis(object):
-    def __init__(self, state, y, ctx_tm1, score):
-        self.state = state
-        self.y = y
-        self.ctx_tm1 = ctx_tm1
-        self.score = score
