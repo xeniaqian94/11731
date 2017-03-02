@@ -389,13 +389,6 @@ def test(args):
     model = EncoderDecoder(args, src_v, tgt_v, src_vocab, tgt_vocab)
     model.load(args.model_name)
 
-    # bleu_score, translations = translate(model, test_data, src_id_to_words, tgt_id_to_words)
-    #
-    # print  "BLEU on test data = ", bleu_score
-    # with open("./model/" + args.model_name + "_test_translations.txt", "w") as fout:
-    #     for hyp in translations:
-    #         fout.write(" ".join(hyp[1:-1]) + '\n')
-    #
     src_blind = get_data_id(src_v, read_corpus(args.blind_src))
 
     print "Blind data line count total " + str(len(src_blind))
@@ -479,6 +472,8 @@ if __name__ == '__main__':
     parser.add_argument('--dev_src', type=str, default="./en-de/valid.en-de.low.de")
     parser.add_argument('--test_tgt', type=str, default="./en-de/test.en-de.low.en")
     parser.add_argument('--test_src', type=str, default="./en-de/test.en-de.low.de")
+    parser.add_argument('--blind_src', type=str, default="./en-de/blind.en-de.low.de")
+
     parser.add_argument('--src_vocab_size', type=int, default=30000)
     parser.add_argument('--tgt_vocab_size', type=int, default=20000)
     parser.add_argument('--load_from')
