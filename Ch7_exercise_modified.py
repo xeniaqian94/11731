@@ -16,9 +16,7 @@ from util import *
 
 def get_batches(sents_pair, batch_size):
     buckets = defaultdict(list)
-
     [buckets[len(pair[0])].append(pair) for pair in sents_pair]
-
     batches = []
 
     for length in buckets:
@@ -30,8 +28,7 @@ def get_batches(sents_pair, batch_size):
                             [bucket[i * batch_size + j][1] for j in range(elements_count)]))
 
     np.random.shuffle(batches)
-    for batch in batches:
-        yield batch
+    return batches
 
 
 class EncoderDecoder:
@@ -57,10 +54,10 @@ class EncoderDecoder:
         self.concat_readout = args.concat_readout
         self.model_name = args.model_name
 
-        self.src_emb = model.add_lookup_parameters((self.src_vocab_size, self.emb_size))
-        self.tgt_emb = model.add_lookup_parameters((self.tgt_vocab_size, self.emb_size))
-        self.enc_forward_rnn = GRUBuilder(1, self.emb_size, self.hidden_dim, model)
-        self.enc_backward_rnn = GRUBuilder(1, self.emb_size, self.hidden_dim, model)
+        self.src_lookup = model.add_lookup_parameters((self.src_vocab_size, self.emb_size))
+        self.tgt_lookup = model.add_lookup_parameters((self.tgt_vocab_size, self.emb_size))
+        self.l2r_builder = GRUBuilder(1, self.emb_size, self.hidden_dim, model)
+        self.r2l_builder = GRUBuilder(1, self.emb_size, self.hidden_dim, model)
 
         self.W_init = model.add_parameters((self.hidden_dim, self.hidden_dim * 2))
         self.b_init = model.add_parameters((self.hidden_dim, 1))
@@ -86,14 +83,10 @@ class EncoderDecoder:
         self.W_att_hidden = model.add_parameters((self.att_dim, self.hidden_dim))
         self.W_att_cxt = model.add_parameters((self.att_dim, self.hidden_dim * 2))
         self.V_att = model.add_parameters((1, self.att_dim))
-        # self.b_att = model.add_parameters((1,))
-        # self.b_att.zero()
 
         self.softmax_W = model.add_parameters((self.tgt_vocab_size, self.emb_size))
         self.softmax_b = model.add_parameters((self.tgt_vocab_size,))
         self.softmax_b.zero()
-        self.SOS = 1
-        self.EOS = 2
 
     def save(self):
         self.model.save(
@@ -105,28 +98,24 @@ class EncoderDecoder:
             "./model/embed_" + str(self.emb_size) + "_hidden_" + str(self.hidden_dim) + "_attn_" + str(
                 self.att_dim))
 
-    def transpose_input(self, seq):
-        max_len = max([len(sent) for sent in seq])
-        seq_pad = []
-        seq_mask = []
-        for i in range(max_len):
-            pad_temp = [sent[i] if i < len(sent) else 2 for sent in seq]
-            mask_temp = [1 if i < len(sent) else 0 for sent in seq]
-            seq_pad.append(pad_temp)
-            seq_mask.append(mask_temp)
-        return seq_pad, seq_mask
+    def transpose_input(self, src_sents):
+        wids = []
+        masks = []
+        for i in range(max([len(sent) for sent in src_sents])):
+            wids.append([sent[i] if len(sent) > i else 2 for sent in src_sents])  # pad </s>
+            masks.append([1 if len(sent) > i else 0 for sent in src_sents])
+        return wids, masks
 
-    def encode(self, src_seq):
-        # src_seq is a batch with the same length
+    def encode(self, src_sents):
         dy.renew_cg()
-        src_pad, src_mask = self.transpose_input(src_seq)
-        wemb = [dy.lookup_batch(self.src_emb, wids) for wids in src_pad]  # (time_step, emb_size, batch_size)
-        wemb_r = wemb[::-1]
-        fwd_vectors = self.enc_forward_rnn.initial_state().transduce(wemb)
-        bwd_vectors = self.enc_backward_rnn.initial_state().transduce(wemb_r)[::-1]
+        wids, masks = self.transpose_input(src_sents)
+        l2r_wid_embeds = [dy.lookup_batch(self.src_lookup, wid) for wid in wids]
+        r2l_wid_embeds = l2r_wid_embeds[::-1]
+        l2r_encodings = self.l2r_builder.initial_state().transduce(l2r_wid_embeds)
+        r2l_encodings = self.r2l_builder.initial_state().transduce(r2l_wid_embeds)[::-1]
 
-        seq_enc = [dy.concatenate([fwd_v, bwd_v]) for (fwd_v, bwd_v) in zip(fwd_vectors, bwd_vectors)]
-        return seq_enc  # (time_step, hid_size*2, batch_size)
+        return [dy.concatenate(
+            [l2r_encoding, r2l_encoding]) for (l2r_encoding, r2l_encoding) in zip(l2r_encodings, r2l_encodings)]
 
     def attention(self, encoding, hidden, batch_size):
         W_att_cxt = dy.parameter(self.W_att_cxt)
@@ -171,11 +160,11 @@ class EncoderDecoder:
         tgt_pad, tgt_mask = self.transpose_input(tgt_seq)
         max_len = max([len(sent) for sent in tgt_seq])
         att_ctx = dy.vecInput(self.hidden_dim * 2)
-        # shifted_tgt_emb = dy.concatenate(zero_emb + tgt_emb)
-        # dec_states = self.dec_rnn.initial_state(enc_rep).transduce(shifted_tgt_emb)
+        # shifted_tgt_lookup = dy.concatenate(zero_emb + tgt_lookup)
+        # dec_states = self.dec_rnn.initial_state(enc_rep).transduce(shifted_tgt_lookup)
         losses = []
         for i in range(max_len - 1):
-            input_t = dy.lookup_batch(self.tgt_emb, tgt_pad[i])
+            input_t = dy.lookup_batch(self.tgt_lookup, tgt_pad[i])
             dec_state = dec_state.add_input(dy.concatenate([input_t, att_ctx]))
             ht = dec_state.output()
             att_ctx, att_weights = self.attention(encoding, ht, batch_size)
@@ -230,12 +219,12 @@ class EncoderDecoder:
         dec_states = [
             self.dec_rnn.initial_state([dy.tanh(dy.affine_transform([b_init_state, W_init_state, encoding[-1]]))])]
         att_ctxs = [dy.vecInput(self.hidden_dim * 2)]
-        samples = [[self.SOS]]
+        samples = [[1]]
 
         for ii in range(max_len):
             cand_scores = []
             for k in range(live):
-                y_t = dy.lookup(self.tgt_emb, samples[k][-1])
+                y_t = dy.lookup(self.tgt_lookup, samples[k][-1])
                 dec_states[k] = dec_states[k].add_input(dy.concatenate([y_t, att_ctxs[k]]))
                 h_t = dec_states[k].output()
                 att_ctx, att_weights = self.attention(encoding, h_t, 1)
@@ -271,7 +260,7 @@ class EncoderDecoder:
             samples = []
 
             for idx, sample in enumerate(new_samples):
-                if new_samples[idx][-1] == self.EOS:
+                if new_samples[idx][-1] == 2:
                     dead += 1
                     final_samples.append(new_samples[idx])
                     final_scores.append(new_scores[idx])
@@ -372,18 +361,6 @@ def train(args):
                    time.time() - start_time)
             decode_loss.backward()
             model.trainer.update()
-
-            loss = model.get_encdec_loss(src_batch, tgt_batch)
-            loss_value = loss.value()
-            total_loss += loss_value * batch_size
-            total_examples += batch_size
-
-            ppl = np.exp(loss_value * batch_size / sum([len(s) for s in tgt_batch]))
-            print  "Epoch=%d, Updates=%d, Loss=%f, Avg. Loss=%f, PPL=%f, Time taken=%d s" % \
-                   (epoch + 1, updates + 1, loss_value, total_loss / total_examples, ppl,
-                    time.time() - start_time)
-            loss.backward()
-            trainer.update()
 
 
 def test(args, config):
