@@ -93,10 +93,11 @@ class EncoderDecoder:
             "./model/embed_" + str(self.emb_size) + "_hidden_" + str(self.hidden_dim) + "_attn_" + str(
                 self.att_dim))
 
-    def load(self):
-        self.model.load(
-            "./model/embed_" + str(self.emb_size) + "_hidden_" + str(self.hidden_dim) + "_attn_" + str(
-                self.att_dim))
+    def load(self, model_name=None):
+        if model_name:
+            self.model.load("./model/" + model_name)
+        else:
+            self.model.load("./model/embed_" + str(self.emb_size) + "_hidden_" + str(self.hidden_dim) + "_attn_" + str(self.att_dim))
 
     def transpose_input(self, src_sents):
         wids = []
@@ -363,22 +364,32 @@ def train(args):
             model.trainer.update()
 
 
-def test(args, config):
-    src_vocab, src_id_to_words, src_train = get_vocab(args.train_src, args.src_vocab_size)
-    tgt_vocab, tgt_id_to_words, tgt_train = get_vocab(args.train_tgt, args.tgt_vocab_size)
+def test(args):
+    training_src = read_corpus(args.train_src)  # get vocabulary
+    src_v = Vocab.from_corpus(training_src, args.src_vocab_size)
+    src_train = get_data_id(src_v, training_src)
+    src_vocab, src_id_to_words = src_v.w2i, src_v.i2w
 
-    config["src_voc_size"] = len(src_vocab)
-    config["tgt_voc_size"] = len(tgt_vocab)
-    src_test = get_data(args.test_src, src_vocab)
-    tgt_test = get_data(args.test_tgt, tgt_vocab)
+    training_tgt = read_corpus(args.train_tgt)
+    tgt_v = Vocab.from_corpus(training_tgt, args.tgt_vocab_size)
+    tgt_train = get_data_id(tgt_v, training_tgt)
+    tgt_vocab, tgt_id_to_words = tgt_v.w2i, tgt_v.i2w
+
+    args.src_voc_size = len(src_vocab)
+    args.tgt_voc_size = len(tgt_vocab)
+
+    src_test = get_data_id(src_v, read_corpus(args.test_src))
+    tgt_test = get_data_id(tgt_v, read_corpus(args.test_tgt))
+
     test_data = zip(src_test, tgt_test)
 
-    nmt_model = EncoderDecoder(config)
-    nmt_model.load()
-    bleu_score, translations = translate(nmt_model, test_data, src_id_to_words, tgt_id_to_words)
+    model = EncoderDecoder(args, src_v, tgt_v, src_vocab, tgt_vocab)
+    model.load(args.model_name)
+
+    bleu_score, translations = translate(model, test_data, src_id_to_words, tgt_id_to_words)
 
     print  "BLEU on test data = ", bleu_score
-    with open("./obj/" + args.model_name + "_test_hyps.txt", "w") as fout:
+    with open("./model/" + args.model_name + "_test_translations.txt", "w") as fout:
         for hyp in translations:
             fout.write(" ".join(hyp[1:-1]) + '\n')
 
@@ -455,7 +466,7 @@ if __name__ == '__main__':
         train(args)
     else:
         print "args.train False, invoking test()"
-        test(args, {})
+        test(args)
 
 
 class Vocab:
