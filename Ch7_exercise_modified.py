@@ -378,7 +378,7 @@ def train(args):
             total_loss += loss_value * batch_size
             total_examples += batch_size
 
-            ppl = np.exp(loss_value * bs / sum([len(s) for s in tgt_batch]))
+            ppl = np.exp(loss_value * batch_size / sum([len(s) for s in tgt_batch]))
             print  "Epoch=%d, Updates=%d, Loss=%f, Avg. Loss=%f, PPL=%f, Time taken=%d s" % \
                    (epoch + 1, updates + 1, loss_value, total_loss / total_examples, ppl,
                     time.time() - start_time)
