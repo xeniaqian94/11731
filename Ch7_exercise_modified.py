@@ -95,9 +95,6 @@ class EncoderDecoder:
         self.SOS = 1
         self.EOS = 2
 
-        # self.src_id_to_word = src_id_to_word
-        # self.tgt_id_to_word = tgt_id_to_word
-
     def save(self):
         self.model.save("./model/" + self.model_name + "_params.bin")
 
@@ -364,6 +361,8 @@ def train(args):
                     time.time() - start_time)
             loss.backward()
             trainer.update()
+
+
 
 
 def test(args, config):
