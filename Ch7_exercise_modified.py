@@ -384,17 +384,23 @@ def test(args):
 
     test_data = zip(src_test, tgt_test)
 
+    print "Test data line count total " + len(test_data)
+
     model = EncoderDecoder(args, src_v, tgt_v, src_vocab, tgt_vocab)
     model.load(args.model_name)
 
-    bleu_score, translations = translate(model, test_data, src_id_to_words, tgt_id_to_words)
+    # bleu_score, translations = translate(model, test_data, src_id_to_words, tgt_id_to_words)
+    #
+    # print  "BLEU on test data = ", bleu_score
+    # with open("./model/" + args.model_name + "_test_translations.txt", "w") as fout:
+    #     for hyp in translations:
+    #         fout.write(" ".join(hyp[1:-1]) + '\n')
+    #
+    # src_blind = get_data_id(src_v, read_corpus(args.blind_src))
 
-    print  "BLEU on test data = ", bleu_score
-    with open("./model/" + args.model_name + "_test_translations.txt", "w") as fout:
-        for hyp in translations:
-            fout.write(" ".join(hyp[1:-1]) + '\n')
+    print "Blind data line count total " + len(src_blind)
 
-    translations = translate_blind(model, src_test, src_id_to_words, tgt_id_to_words)
+    translations = translate_blind(model, src_blind, src_id_to_words, tgt_id_to_words)
 
     with open("./model/" + args.model_name + "_blind_translations.txt", "w") as fout:
         for hyp in translations:
@@ -406,7 +412,9 @@ def translate(model, data_pair, src_id_to_words, tgt_id_to_words):
     references = []
     empty = True
     count = 0
+    total = len(data_pair)
     for src_sent, tgt_sent in data_pair:
+        count = count + 1
 
         scores, samples = model.gen_samples(src_sent, 200)
         sample = samples[np.array(scores).argmin()]
@@ -423,6 +431,7 @@ def translate(model, data_pair, src_id_to_words, tgt_id_to_words):
         references.append([tgt])
         translations.append(hyp)
 
+        print "\n" + str(count) + "/" + str(total)
         print  "Src sent: ", " ".join(src[1:-1])
         print  "Tgt sent: ", " ".join(tgt[1:-1])
         print  "Hypothesis: ", " ".join(hyp[1:-1])
@@ -435,8 +444,10 @@ def translate(model, data_pair, src_id_to_words, tgt_id_to_words):
 
 def translate_blind(model, src_sents, src_id_to_words, tgt_id_to_words):
     translations = []
-    empty = True
+    count = 0
+    total = len(src_sents)
     for src_sent in src_sents:
+        count = count + 1
         scores, samples = model.gen_samples(src_sent, 200)
         sample = samples[np.array(scores).argmin()]
 
@@ -447,7 +458,7 @@ def translate_blind(model, src_sents, src_id_to_words, tgt_id_to_words):
             print  "Empty translation below !!!!!!!"
 
         translations.append(hyp)
-
+        print "\n" + str(count) + "/" + str(total)
         print  "Src sent: ", " ".join(src[1:-1])
         print  "Hypothesis: ", " ".join(hyp[1:-1])
 
