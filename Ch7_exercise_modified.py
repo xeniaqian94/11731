@@ -15,40 +15,23 @@ from util import *
 
 
 def get_batches(sents_pair, batch_size):
-    length_bucket = defaultdict(list)
-    for pair in sents_pair:
-        length_bucket[len(pair[0])].append(pair)
+    buckets = defaultdict(list)
+
+    [buckets[len(pair[0])].append(pair) for pair in sents_pair]
+
     batches = []
-    for length in length_bucket:
-        pairs = length_bucket[length]
-        # print "Batch" + str(length) + str(len(pairs))
-        batch_ids = [x * batch_size for x in range(len(pairs) / batch_size + 1)]
-        random.shuffle(batch_ids)
-        for i, sid in enumerate(batch_ids, 1):
-            batches.append(tuple(zip(*pairs[sid:sid + batch_size])))
-    random.shuffle(batches)
+
+    for len in buckets:
+        bucket = buckets[len]
+        np.random.shuffle(bucket)
+        for i in range(int(np.ceil(len(bucket) * 1.0 / batch_size))):
+            elements_count = np.min(batch_size, len(bucket) - batch_size * i)
+            batches.append(([bucket[i * batch_size + j][0] for j in range(elements_count)],
+                            [bucket[i * batch_size + j][1] for j in range(elements_count)]))
+
+    np.random.shuffle(batches)
     for batch in batches:
-        # yield [list(batch[0]), list(batch[1])]
-        if len(batch) == 2 and len(batch[0]) > 0 and len(batch[1]) > 0:
-            yield batch
-            # buckets = defaultdict(list)
-            # for pair in sents_pair:
-            #     src = pair[0]
-            #     buckets[len(src)].append(pair)
-            #
-            # batches = []
-            # for src_len in buckets:
-            #     bucket = buckets[src_len]
-            #     np.random.shuffle(bucket)
-            #     num_batches = int(np.ceil(len(bucket) * 1.0 / batch_size))
-            #     for i in range(num_batches):
-            #         cur_batch_size = batch_size if i < num_batches - 1 else len(bucket) - batch_size * i
-            #         batches.append(([bucket[i * batch_size + j][0] for j in range(cur_batch_size)],
-            #                         [bucket[i * batch_size + j][1] for j in range(cur_batch_size)]))
-            #
-            # np.random.shuffle(batches)
-            # for batch in batches:
-            #     yield batch
+        yield batch
 
 
 class EncoderDecoder:
@@ -464,7 +447,7 @@ if __name__ == '__main__':
     parser.add_argument('--test', dest='train', action='store_false')
 
     parser.add_argument('--dynet-mem', default="6000,5000,1000", type=str)
-    parser.add_argument('--random_seed', default=235109662, type=int)
+    parser.add_argument('--random_seed', default=135109662, type=int)
     parser.add_argument('--for_loop_att', action="store_true", default=False)
     args = parser.parse_args()
 
