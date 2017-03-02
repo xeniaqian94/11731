@@ -97,7 +97,8 @@ class EncoderDecoder:
         if model_name:
             self.model.load("./model/" + model_name)
         else:
-            self.model.load("./model/embed_" + str(self.emb_size) + "_hidden_" + str(self.hidden_dim) + "_attn_" + str(self.att_dim))
+            self.model.load("./model/embed_" + str(self.emb_size) + "_hidden_" + str(self.hidden_dim) + "_attn_" + str(
+                self.att_dim))
 
     def transpose_input(self, src_sents):
         wids = []
@@ -393,6 +394,12 @@ def test(args):
         for hyp in translations:
             fout.write(" ".join(hyp[1:-1]) + '\n')
 
+    translations = translate_blind(model, src_test, src_id_to_words, tgt_id_to_words)
+
+    with open("./model/" + args.model_name + "_blind_translations.txt", "w") as fout:
+        for hyp in translations:
+            fout.write(" ".join(hyp[1:-1]) + '\n')
+
 
 def translate(model, data_pair, src_id_to_words, tgt_id_to_words):
     translations = []
@@ -400,9 +407,7 @@ def translate(model, data_pair, src_id_to_words, tgt_id_to_words):
     empty = True
     count = 0
     for src_sent, tgt_sent in data_pair:
-        count = count + 1
-        if count > 100:
-            break
+
         scores, samples = model.gen_samples(src_sent, 200)
         sample = samples[np.array(scores).argmin()]
 
@@ -414,7 +419,7 @@ def translate(model, data_pair, src_id_to_words, tgt_id_to_words):
             empty = False
 
         if len(hyp) == 2:
-            print  "Empty translation!!!!!!!"
+            print  "Empty translation below !!!!!!!"
         references.append([tgt])
         translations.append(hyp)
 
@@ -426,6 +431,27 @@ def translate(model, data_pair, src_id_to_words, tgt_id_to_words):
         return 0.0, translations
     bleu_score = corpus_bleu(references, translations)
     return bleu_score, translations
+
+
+def translate_blind(model, src_sents, src_id_to_words, tgt_id_to_words):
+    translations = []
+    empty = True
+    for src_sent in src_sents:
+        scores, samples = model.gen_samples(src_sent, 200)
+        sample = samples[np.array(scores).argmin()]
+
+        src = [src_id_to_words[i] for i in src_sent]
+        hyp = [tgt_id_to_words[i] for i in sample]
+
+        if len(hyp) == 2:
+            print  "Empty translation below !!!!!!!"
+
+        translations.append(hyp)
+
+        print  "Src sent: ", " ".join(src[1:-1])
+        print  "Hypothesis: ", " ".join(hyp[1:-1])
+
+    return translations
 
 
 if __name__ == '__main__':
