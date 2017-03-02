@@ -322,14 +322,15 @@ def train(args):
                 tt = time.time() - begin_time
                 print  "BlEU score = %f. Time %d s elapsed. Avg decoding time per sentence %f s" % (
                     bleu_score, tt, tt * 1.0 / len(dev_data))
+                print "Epoch=%d, Updates=%d, Pairs_Porcessed=%d" % (epoch + 1, updates + 1, total_examples)
 
                 if len(valid_history) == 0 or bleu_score > max(valid_history):
                     bad_counter = 0
-
                     model.save()
-                    print "Model saved"
+                    print "Bad counter back to 0 Model saved"
                 else:
                     bad_counter += 1
+                    print "Cautious, BLEU not decreasing, bad_counter "+str(bad_counter)
                     if bad_counter >= args.patience:
                         print("Early stop!")
                         exit(0)
@@ -433,7 +434,7 @@ def translate(model, data_pair, src_id_to_words, tgt_id_to_words):
         print  "Hypothesis: ", " ".join(hyp[1:-1])
 
     if empty:
-        return 0.0, translations #otherwise bleu will throw divided by zero error
+        return 0.0, translations  # otherwise bleu will throw divided by zero error
     bleu_score = corpus_bleu(references, translations)
     return bleu_score, translations
 
