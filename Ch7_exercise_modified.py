@@ -37,14 +37,10 @@ class EncoderDecoder:
         self.model = model = dy.Model()
         self.trainer = dy.AdamTrainer(self.model)
         self.args = args
-        # self.src_token_to_id = args['src_token_to_id']
         self.src_vocab, self.src_token_to_id, self.src_id_to_token = src_vocab, src_vocab.w2i, src_vocab.i2w
         self.src_vocab_size = self.src_vocab.size()
-
-        # self.tgt_token_to_id = args['tgt_token_to_id']
         self.tgt_vocab, self.tgt_token_to_id, self.tgt_id_to_token = tgt_vocab, tgt_vocab.w2i, tgt_vocab.i2w
         self.tgt_vocab_size = self.tgt_vocab.size()
-
         self.emb_size = args.emb_size
         self.hidden_dim = args.hid_dim
         self.att_dim = args.att_dim
@@ -62,13 +58,9 @@ class EncoderDecoder:
         self.W_init = model.add_parameters((self.hidden_dim, self.hidden_dim * 2))
         self.b_init = model.add_parameters((self.hidden_dim, 1))
         self.b_init.zero()
-        # self.dec_rnn = GRUBuilder(config['layers'], self.emb_size, self.hidden_dim, model)
         self.dec_rnn = GRUBuilder(1, self.emb_size + self.hidden_dim * 2, self.hidden_dim, model)
-        # read out parameters
 
         if args.concat_readout:
-            # self.W_readout = model.add_parameters((self.tgt_voc_size, self.hidden_dim * 3))
-            # self.b_readout = model.add_parameters((self.tgt_voc_size))
             self.W_readout = model.add_parameters((self.emb_size, self.hidden_dim * 3))
             self.b_readout = model.add_parameters((self.emb_size))
             self.b_readout.zero()
@@ -162,8 +154,6 @@ class EncoderDecoder:
         tgt_pad, tgt_mask = self.transpose_input(tgt_seq)
         max_len = max([len(sent) for sent in tgt_seq])
         att_ctx = dy.vecInput(self.hidden_dim * 2)
-        # shifted_tgt_lookup = dy.concatenate(zero_emb + tgt_lookup)
-        # dec_states = self.dec_rnn.initial_state(enc_rep).transduce(shifted_tgt_lookup)
         losses = []
         for i in range(max_len - 1):
             input_t = dy.lookup_batch(self.tgt_lookup, tgt_pad[i])
@@ -368,12 +358,10 @@ def train(args):
 def test(args):
     training_src = read_corpus(args.train_src)  # get vocabulary
     src_v = Vocab.from_corpus(training_src, args.src_vocab_size)
-    src_train = get_data_id(src_v, training_src)
     src_vocab, src_id_to_words = src_v.w2i, src_v.i2w
 
     training_tgt = read_corpus(args.train_tgt)
     tgt_v = Vocab.from_corpus(training_tgt, args.tgt_vocab_size)
-    tgt_train = get_data_id(tgt_v, training_tgt)
     tgt_vocab, tgt_id_to_words = tgt_v.w2i, tgt_v.i2w
 
     args.src_voc_size = len(src_vocab)
@@ -381,7 +369,6 @@ def test(args):
 
     src_test = get_data_id(src_v, read_corpus(args.test_src))
     tgt_test = get_data_id(tgt_v, read_corpus(args.test_tgt))
-
     test_data = zip(src_test, tgt_test)
 
     print "Test data line count total " + str(len(test_data))
@@ -389,13 +376,31 @@ def test(args):
     model = EncoderDecoder(args, src_v, tgt_v, src_vocab, tgt_vocab)
     model.load(args.model_name)
 
+    bleu_score, translations = translate(model, test_data, src_id_to_words, tgt_id_to_words)
+
+    print  "BLEU on test data = " + str(bleu_score) + " " + str(args.beam_size)
+    with open("./model/" + args.model_name + "_test_translations_" + str(args.beam_size) + ".txt", "w") as fout:
+        for hyp in translations:
+            fout.write(" ".join(hyp[1:-1]) + '\n')
+
+    src_dev = get_data_id(src_v, read_corpus(args.dev_src))
+    tgt_dev = get_data_id(tgt_v, read_corpus(args.dev_tgt))
+    dev_data = zip(src_dev, tgt_dev)
+
+    bleu_score, translations = translate(model, dev_data, src_id_to_words, tgt_id_to_words)
+
+    print  "BLEU on dev data = " + str(bleu_score) + " " + str(args.beam_size)
+    with open("./model/" + args.model_name + "_dev_translations_" + str(args.beam_size) + ".txt", "w") as fout:
+        for hyp in translations:
+            fout.write(" ".join(hyp[1:-1]) + '\n')
+
     src_blind = get_data_id(src_v, read_corpus(args.blind_src))
 
     print "Blind data line count total " + str(len(src_blind))
 
     translations = translate_blind(model, src_blind, src_id_to_words, tgt_id_to_words)
 
-    with open("./model/" + args.model_name + "_blind_translations.txt", "w") as fout:
+    with open("./model/" + args.model_name + "_blind_translations_" + str(args.beam_size) + ".txt", "w") as fout:
         for hyp in translations:
             fout.write(" ".join(hyp[1:-1]) + '\n')
 
@@ -419,8 +424,6 @@ def translate(model, data_pair, src_id_to_words, tgt_id_to_words):
         if len(hyp) > 2:
             empty = False
 
-        if len(hyp) == 2:
-            print  "Empty translation below !!!!!!!"
         references.append([tgt])
         translations.append(hyp)
 
@@ -430,7 +433,7 @@ def translate(model, data_pair, src_id_to_words, tgt_id_to_words):
         print  "Hypothesis: ", " ".join(hyp[1:-1])
 
     if empty:
-        return 0.0, translations
+        return 0.0, translations #otherwise bleu will throw divided by zero error
     bleu_score = corpus_bleu(references, translations)
     return bleu_score, translations
 
