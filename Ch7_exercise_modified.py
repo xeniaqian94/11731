@@ -10,8 +10,45 @@ import copy
 
 from nltk.translate.bleu_score import corpus_bleu
 import time
-from utils import *
+# from utils import *
 from util import *
+
+
+def get_batches(sents_pair, batch_size):
+    # length_bucket = defaultdict(list)
+    # for pair in sents_pair:
+    #     length_bucket[len(pair[0])].append(pair)
+    # batches = []
+    # for length in length_bucket:
+    #     pairs = length_bucket[length]
+    #     # print "Batch" + str(length) + str(len(pairs))
+    #     batch_ids = [x * batch_size for x in range(len(pairs) / batch_size + 1)]
+    #     random.shuffle(batch_ids)
+    #     for i, sid in enumerate(batch_ids, 1):
+    #         batches.append(tuple(zip(*pairs[sid:sid + batch_size])))
+    # random.shuffle(batches)
+    # for batch in batches:
+    #     # yield [list(batch[0]), list(batch[1])]
+    #     if len(batch) == 2 and len(batch[0]) > 0 and len(batch[1]) > 0:
+    #         yield batch
+    buckets = defaultdict(list)
+    for pair in sents_pair:
+        src = pair[0]
+        buckets[len(src)].append(pair)
+
+    batches = []
+    for src_len in buckets:
+        bucket = buckets[src_len]
+        np.random.shuffle(bucket)
+        num_batches = int(np.ceil(len(bucket) * 1.0 / batch_size))
+        for i in range(num_batches):
+            cur_batch_size = batch_size if i < num_batches - 1 else len(bucket) - batch_size * i
+            batches.append(([bucket[i * batch_size + j][0] for j in range(cur_batch_size)],
+                            [bucket[i * batch_size + j][1] for j in range(cur_batch_size)]))
+
+    np.random.shuffle(batches)
+    for batch in batches:
+        yield batch
 
 
 class EncoderDecoder:
@@ -309,7 +346,7 @@ def train(args):
     start_time = time.time()
     eval_every = args.eval_every
     for epoch in range(epochs):
-        for (src_batch, tgt_batch) in data_iterator(train_data, args.batch_size):
+        for (src_batch, tgt_batch) in get_batches(train_data, args.batch_size):
             updates += 1
             bs = len(src_batch)
 
@@ -373,10 +410,17 @@ def translate(model, data_pair, src_id_to_words, tgt_id_to_words):
     for src_sent, tgt_sent in data_pair:
         scores, samples = model.gen_samples(src_sent, 200)
         sample = samples[np.array(scores).argmin()]
+        #
+        # print "Source: " + " ".join([self.src_id_to_token[i] for i in src_sent])
+        # print "Reference: " + " ".join([self.tgt_id_to_token[i] for i in tgt_sent])
+        # print "Translation: " + " ".join(hypothesis.y)
 
-        src = get_sent(src_sent, src_id_to_words)
-        tgt = get_sent(tgt_sent, tgt_id_to_words)
-        hyp = get_sent(sample, tgt_id_to_words)
+        # src = get_sent(src_sent, src_id_to_words)
+        # tgt = get_sent(tgt_sent, tgt_id_to_words)
+        # hyp = get_sent(sample, tgt_id_to_words)
+        src = [src_id_to_words[i] for i in src_sent]
+        tgt = [tgt_id_to_words[i] for i in tgt_sent]
+        hyp = [tgt_id_to_words[i] for i in sample]
 
         if len(hyp) > 2:
             empty = False
@@ -435,3 +479,115 @@ if __name__ == '__main__':
     else:
         print "args.train False, invoking test()"
         test(args, {})
+
+
+class Vocab:
+    def __init__(self, w2i=None):
+        if w2i is None: w2i = defaultdict(count(0).next)
+        self.w2i = dict(w2i)
+        self.i2w = {i: w for w, i in w2i.iteritems()}
+
+    @classmethod
+    def from_corpus(cls, corpus, top=20000):
+        freqs = Counter(chain(*corpus))
+        # print len(freqs)class Vocab:
+
+    def __init__(self, w2i=None):
+        if w2i is None: w2i = defaultdict(count(0).next)
+        self.w2i = dict(w2i)
+        self.i2w = {i: w for w, i in w2i.iteritems()}
+
+    @classmethod
+    def from_corpus(cls, corpus, top=20000):
+        freqs = Counter(chain(*corpus))
+        # print len(freqs)
+        sorted_freqs = sorted(freqs.iteritems(), key=operator.itemgetter(1), reverse=True)
+
+        w2i = defaultdict(count(0).next)
+        w2i["<unk>"]
+        w2i["<s>"]
+        w2i["</s>"]
+        # print "w2i for <unk> <s> </s> " + str(w2i["<unk>"]) + str(w2i["<s>"]) + str(w2i["</s>"])
+
+        [w2i[key] for key, value in sorted_freqs[:top - 1] if value > 1]  # eliminate singleton
+        vocab = Vocab(w2i)
+        return vocab
+
+    def size(self):
+        return len(self.w2i.keys())
+
+    def word2Wid(self, word):
+        if word in self.w2i:
+            return self.w2i[word]
+        else:
+            return self.w2i["<unk>"]
+
+
+def get_data_id(src_vocab, data):
+    data_id = []
+    for sent in data:
+        data_id.append([src_vocab.word2Wid(word) for word in sent])
+    return data_id
+
+
+def read_corpus(fname):
+    data = []
+    with file(fname) as fh:
+        for line in fh:
+            sent = line.strip().split()
+            data.append(["<s>"] + sent + ["</s>"])
+            # yield ["<s>"] + sent + ["</s>"]
+    return data
+
+
+class Hypothesis(object):
+    def __init__(self, state, y, ctx_tm1, score):
+        self.state = state
+        self.y = y
+        self.ctx_tm1 = ctx_tm1
+        self.score = score
+        sorted_freqs = sorted(freqs.iteritems(), key=operator.itemgetter(1), reverse=True)
+
+        w2i = defaultdict(count(0).next)
+        w2i["<unk>"]
+        w2i["<s>"]
+        w2i["</s>"]
+        # print "w2i for <unk> <s> </s> " + str(w2i["<unk>"]) + str(w2i["<s>"]) + str(w2i["</s>"])
+
+        [w2i[key] for key, value in sorted_freqs[:top - 1] if value > 1]  # eliminate singleton
+        vocab = Vocab(w2i)
+        return vocab
+
+    def size(self):
+        return len(self.w2i.keys())
+
+    def word2Wid(self, word):
+        if word in self.w2i:
+            return self.w2i[word]
+        else:
+            return self.w2i["<unk>"]
+
+
+def get_data_id(src_vocab, data):
+    data_id = []
+    for sent in data:
+        data_id.append([src_vocab.word2Wid(word) for word in sent])
+    return data_id
+
+
+def read_corpus(fname):
+    data = []
+    with file(fname) as fh:
+        for line in fh:
+            sent = line.strip().split()
+            data.append(["<s>"] + sent + ["</s>"])
+            # yield ["<s>"] + sent + ["</s>"]
+    return data
+
+
+class Hypothesis(object):
+    def __init__(self, state, y, ctx_tm1, score):
+        self.state = state
+        self.y = y
+        self.ctx_tm1 = ctx_tm1
+        self.score = score
