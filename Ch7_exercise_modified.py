@@ -25,7 +25,7 @@ def get_batches(sents_pair, batch_size):
         bucket = buckets[length]
         np.random.shuffle(bucket)
         for i in range(int(np.ceil(len(bucket) * 1.0 / batch_size))):
-            elements_count = np.min(batch_size, len(bucket) - batch_size * i)
+            elements_count = min(batch_size, len(bucket) - batch_size * i)
             batches.append(([bucket[i * batch_size + j][0] for j in range(elements_count)],
                             [bucket[i * batch_size + j][1] for j in range(elements_count)]))
 
