@@ -396,7 +396,7 @@ def test(args):
     #     for hyp in translations:
     #         fout.write(" ".join(hyp[1:-1]) + '\n')
     #
-    # src_blind = get_data_id(src_v, read_corpus(args.blind_src))
+    src_blind = get_data_id(src_v, read_corpus(args.blind_src))
 
     print "Blind data line count total " + len(src_blind)
 
