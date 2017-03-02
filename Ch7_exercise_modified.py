@@ -384,7 +384,7 @@ def test(args):
 
     test_data = zip(src_test, tgt_test)
 
-    print "Test data line count total " + len(test_data)
+    print "Test data line count total " + str(len(test_data))
 
     model = EncoderDecoder(args, src_v, tgt_v, src_vocab, tgt_vocab)
     model.load(args.model_name)
