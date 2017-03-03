@@ -64,11 +64,9 @@ def get_data_id(src_vocab, data):
 
 def read_corpus(fname):
     data = []
-    with file(fname) as fh:
-        for line in fh:
-            sent = line.strip().split()
-            data.append(["<s>"] + sent + ["</s>"])
-            # yield ["<s>"] + sent + ["</s>"]
+    for line in open(fname):
+        sent = line.strip().split()
+        data.append(["<s>"] + sent + ["</s>"])
     return data
 
 
@@ -123,19 +121,6 @@ class EncoderDecoder:
         self.softmax_W = model.add_parameters((self.tgt_vocab_size, self.args.emb_size))
         self.softmax_b = model.add_parameters((self.tgt_vocab_size,))
         self.softmax_b.zero()
-
-    def save(self):
-        self.model.save(
-            "./model/embed_" + str(self.args.emb_size) + "_hidden_" + str(self.args.hid_dim) + "_attn_" + str(
-                self.args.att_dim))
-
-    def load(self, model_name=None):
-        if model_name:
-            self.model.load("./model/" + model_name)
-        else:
-            self.model.load(
-                "./model/embed_" + str(self.args.emb_size) + "_hidden_" + str(self.args.hid_dim) + "_attn_" + str(
-                    self.args.att_dim))
 
     def transpose_input(self, src_sents):
         wids = []
@@ -211,7 +196,7 @@ class EncoderDecoder:
 
         return dy.sum_batches(loss) / batch_size
 
-    def gen_samples(self, src_seq, max_len=30, beam_size=5):
+    def beam_search(self, src_seq, max_len=30, beam_size=5):
         encoding = self.encode([src_seq])
 
         W_init = dy.parameter(self.W_init)
@@ -225,12 +210,12 @@ class EncoderDecoder:
         softmax_w = dy.parameter(self.softmax_W)
         softmax_b = dy.parameter(self.softmax_b)
 
-        state = self.dec_builder.initial_state(dy.tanh(dy.affine_transform([b_init, W_init, encoding[-1]])))
+        state = self.dec_builder.initial_state([dy.tanh(dy.affine_transform([b_init, W_init, encoding[-1]]))])
         sample = [1]
         score = 0
         ctx = dy.vecInput(self.args.hid_dim * 2)
 
-        hypotheses_pool = [(state, sample, score, ctx)]
+        hypotheses_pool = [[state, sample, score, ctx]]
 
         final_scores = []
         final_samples = []
@@ -257,7 +242,7 @@ class EncoderDecoder:
             new_pool = []
             for idx, [bidx, widx] in enumerate(zip(cands_indices, cands_words)):
                 prev_hyp = hypotheses_pool[bidx]
-                new_hyp = (prev_hyp[0], prev_hyp[1] + [widx], prev_hyp[2] + cands_scores[idx], prev_hyp[3])
+                new_hyp = [prev_hyp[0], prev_hyp[1] + [widx], prev_hyp[2] + cands_scores[idx], prev_hyp[3]]
                 if widx == 2:
                     final_scores.append(new_hyp[2])
                     final_samples.append(new_hyp[1])
@@ -277,6 +262,19 @@ class EncoderDecoder:
                 final_samples.append(hypotheses_pool[idx][1])
 
         return final_scores, final_samples
+
+    def save(self):
+        self.model.save(
+            "./model/embed_" + str(self.args.emb_size) + "_hidden_" + str(self.args.hid_dim) + "_attn_" + str(
+                self.args.att_dim))
+
+    def load(self, model_name=None):
+        if model_name:
+            self.model.load("./model/" + model_name)
+        else:
+            self.model.load(
+                "./model/embed_" + str(self.args.emb_size) + "_hidden_" + str(self.args.hid_dim) + "_attn_" + str(
+                    self.args.att_dim))
 
 
 def train(args):
@@ -301,14 +299,16 @@ def train(args):
 
     model = EncoderDecoder(args, src_v, tgt_v, src_vocab, tgt_vocab)
 
-    epochs = 30
     updates = 0
     valid_history = []
     bad_counter = 0
-    total_loss = total_examples = total_length = 0
+    total_loss =0
+    total_examples = 0
+    total_length = 0
     start_time = time.time()
     eval_every = args.eval_every
-    for epoch in range(epochs):
+    epoch=0
+    while True:
         for (src_batch, tgt_batch) in get_batches(train_data, args.batch_size):
             updates += 1
             batch_size = len(src_batch)
@@ -317,8 +317,8 @@ def train(args):
 
                 bleu_score, translation = translate(model, dev_data, src_id_to_words, tgt_id_to_words)
 
-                print "Epoch=%d, Updates=%d, Pairs_Porcessed=%d, BlEU score = %f " % (
-                    epoch + 1, updates + 1, total_examples, bleu_score)
+                print "Epoch=%d, Updates=%d, Pairs_Processed=%d, BLEU=%f " % (
+                    epoch + 1, updates, total_examples, bleu_score)
 
                 if len(valid_history) == 0 or bleu_score > max(valid_history):
                     bad_counter = 0
@@ -327,9 +327,9 @@ def train(args):
                 else:
                     bad_counter += 1
                     print "Cautious, BLEU not decreasing, bad_counter " + str(bad_counter)
-                    if bad_counter >= 10:
+                    if bad_counter >= 30:
                         print("Early stop!")
-                        exit(0)
+                        exit
 
                 valid_history.append(bleu_score)
 
@@ -345,11 +345,12 @@ def train(args):
 
             ppl = np.exp(loss_value * batch_size / batch_length)
             total_ppl = np.exp(total_loss / total_length)
-            print "Epoch=%d, Updates=%d, Pairs_Porcessed=%d, Loss=%f, Avg. Loss=%f, PPL(for this batch)=%f, PPL(overall)=%f, Time taken=%d s" % \
+            print "Epoch=%d, Updates=%d, Pairs_Porcessed=%d, Loss=%f, Avg. Loss=%f, PPL(for this batch)=%f, PPL(overall)=%f, Time=%d s" % \
                   (epoch + 1, updates + 1, total_examples, loss_value, total_loss / total_examples, ppl, total_ppl,
                    time.time() - start_time)
             decode_loss.backward()
             model.trainer.update()
+        epoch+=1
 
 
 def test(args):
@@ -412,7 +413,7 @@ def translate(model, data_pair, src_id_to_words, tgt_id_to_words, beam_size=5):
     for src_sent, tgt_sent in data_pair:
         count = count + 1
 
-        scores, samples = model.gen_samples(src_sent, 200, beam_size)
+        scores, samples = model.beam_search(src_sent, 200, beam_size)
         sample = samples[np.array(scores).argmin()]  # one of the best
 
         src = [src_id_to_words[i] for i in src_sent]
@@ -426,9 +427,9 @@ def translate(model, data_pair, src_id_to_words, tgt_id_to_words, beam_size=5):
         translations.append(hyp)
 
         print "\n" + str(count) + "/" + str(total)
-        print  "Src sent: ", " ".join(src[1:-1])
-        print  "Tgt sent: ", " ".join(tgt[1:-1])
-        print  "Hypothesis: ", " ".join(hyp[1:-1])
+        print  "Src: ", " ".join(src[1:-1])
+        print  "Tgt: ", " ".join(tgt[1:-1])
+        print  "Hyp: ", " ".join(hyp[1:-1])
 
     if empty:
         return 0.0, translations  # otherwise bleu will throw divided by zero error
@@ -439,7 +440,7 @@ def translate(model, data_pair, src_id_to_words, tgt_id_to_words, beam_size=5):
 def translate_blind(model, src_sents, src_id_to_words, tgt_id_to_words, beam_size=5):
     translations = []
     for src_sent in src_sents:
-        scores, samples = model.gen_samples(src_sent, 200, beam_size)
+        scores, samples = model.beam_search(src_sent, 200, beam_size)
         sample = samples[np.array(scores).argmin()]
         hyp = [tgt_id_to_words[i] for i in sample]
         translations.append(hyp)
